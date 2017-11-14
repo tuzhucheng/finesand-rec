@@ -21,6 +21,6 @@ object Example {
         val actions = g.getActions().asScala
 
         println("Action:")
-        actions.foreach(println)
+        actions.foreach(a => println(a.format(dstTc)))
     }
 }
