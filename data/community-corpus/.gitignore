@@ -1,5 +1,2 @@
-antlr4/
-itextpdf/
-jgit/
-log4j/
-spring-framework/
+*
+!download-community-corpus.sh
