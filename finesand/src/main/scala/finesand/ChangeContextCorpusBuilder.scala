@@ -2,6 +2,7 @@ package finesand
 
 import sys.process._
 import java.io.{BufferedWriter,File,FileWriter}
+import java.util.concurrent.atomic.AtomicInteger
 
 import finesand.model.{Commit,Transaction}
 
@@ -20,11 +21,9 @@ object ChangeContextCorpusBuilderDriver {
         Process(s"mkdir -p ${projectName}-corpus", reposDir)!!
         val corpusPath = s"${repo}-corpus"
         val corpusDir = new File(corpusPath)
-        trainCommitsMap.zipWithIndex foreach {
-            case ((commitId, commit), idx) => {
-                if (idx % 100 == 0) {
-                    println(s"Processing commit changed files, ${idx+1} / ${trainCommitsMap.size} commits")
-                }
+        val completed = new AtomicInteger()
+        trainCommitsMap foreach {
+            case (commitId, commit) => {
                 Process(s"mkdir -p ${commitId}", corpusDir).!!
                 val commitPath = s"${corpusPath}/${commitId}"
                 val commitDir = new File(commitPath)
@@ -43,6 +42,10 @@ object ChangeContextCorpusBuilderDriver {
                 val bw = new BufferedWriter(new FileWriter(changeFile))
                 commit.transactions foreach (transaction => bw.write(transaction + "\n"))
                 bw.close()
+            }
+            val done = completed.incrementAndGet()
+            if (done % 100 == 0) {
+                println(s"Processing commit changed files, ${done} / ${trainCommitsMap.size} commits")
             }
         }
     }
