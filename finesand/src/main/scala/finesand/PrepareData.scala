@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import finesand.model.{Commit,Transaction}
 
-object ChangeContextCorpusBuilderDriver {
+object PrepareData {
     def main(args: Array[String]): Unit = {
         val repo = "../data/community-corpus/log4j"
         val projectDir = new File(repo)
