@@ -13,11 +13,13 @@ import com.github.gumtreediff.gen.Generators
 import com.github.gumtreediff.io.TreeIoUtils
 import com.github.gumtreediff.matchers.Matcher
 import com.github.gumtreediff.matchers.Matchers
-import com.github.gumtreediff.tree.TreeContext
+import com.github.gumtreediff.tree.{ITree,TreeContext}
 
 import finesand.model.{Commit,Transaction}
 
 object BuildCounts {
+    val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
+
     def getCommits(corpusDir: String): List[Commit] = {
         val dir = new File(corpusDir)
         if (!dir.exists || !dir.isDirectory)
@@ -94,6 +96,38 @@ object BuildCounts {
         writer.close
     }
 
+    def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int) = {
+        val tokens = tree.getRoot.preOrder.toList.map(n => {
+            val nodeType = tree.getTypeLabel(n)
+            val label = nodeType match {
+                case "ForStatement" | "EnhancedForStatement" => "for"
+                case "WhileStatement" => "while"
+                case "DoStatement" => "do"
+                case "IfStatement" => "if"
+                case "ElseStatement" => "else"
+                case "SwitchStatement" => "switch"
+                case "SwitchCase" => "case"
+                case "BreakStatement" => "break"
+                case "ContinueStatement" => "continue"
+                case "ThrowStatement" => "throw"
+                case "TryStatement" => "try"
+                case "CatchClause" => "catch"
+                case "Finally" => "finally"
+                case "SynchronizedStatement" => "synchronized"
+                case "MethodInvocation" => if (n.getChildren.length > 1) n.getChild(1).getLabel else n.getLabel
+                case "SimpleType" | "SimpleName" | "BooleanLiteral" | "NullLiteral" => n.getLabel
+                case _ => ""
+            }
+
+            // position refers to the index of character in the file that contains the action node
+            val position = n.getPos
+            val token = ("Token", nodeType, label)
+            val tokenLoc = (commit.commitId, transactionIdx, position)
+            (token, tokenLoc)
+        }).filterNot(t => disallowedTypes.contains(t._1._2))
+        tokens
+    }
+
     def generateCodeContext(commits: List[Commit], repoCorpus: String): Unit = {
         val completed = new AtomicInteger()
 
@@ -102,43 +136,13 @@ object BuildCounts {
            .filter(t => t.path.endsWith(".java"))
         }).size
 
-        val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
-
         val codeContextIndex = commits.flatMap(c => {
           c.transactions
            .filter(t => t.path.endsWith(".java"))
            .zipWithIndex.flatMap{ case (t, i) => {
                 val newFile = s"${repoCorpus}/${c.commitId}/${t.path}"
                 val dstTree = Generators.getInstance().getTree(newFile)
-                val dst = dstTree.getRoot
-                val tokens = dst.preOrder.toList.map(n => {
-                    val nodeType = dstTree.getTypeLabel(n)
-                    val label = nodeType match {
-                        case "ForStatement" | "EnhancedForStatement" => "for"
-                        case "WhileStatement" => "while"
-                        case "DoStatement" => "do"
-                        case "IfStatement" => "if"
-                        case "ElseStatement" => "else"
-                        case "SwitchStatement" => "switch"
-                        case "SwitchCase" => "case"
-                        case "BreakStatement" => "break"
-                        case "ContinueStatement" => "continue"
-                        case "ThrowStatement" => "throw"
-                        case "TryStatement" => "try"
-                        case "CatchClause" => "catch"
-                        case "Finally" => "finally"
-                        case "SynchronizedStatement" => "synchronized"
-                        case "MethodInvocation" => if (n.getChildren.length > 1) n.getChild(1).getLabel else n.getLabel
-                        case "SimpleType" | "SimpleName" | "BooleanLiteral" | "NullLiteral" => n.getLabel
-                        case _ => ""
-                    }
-
-                    // position refers to the index of character in the file that contains the action node
-                    val position = n.getPos
-                    val token = ("Token", nodeType, label)
-                    val tokenLoc = (c.commitId, i, position)
-                    (token, tokenLoc)
-                }).filterNot(t => disallowedTypes.contains(t._1._2))
+                val tokens = getTokensForTree(dstTree, c, i)
 
                 val done = completed.incrementAndGet()
                 println(s"Processed ${done} / ${total} transactions")
