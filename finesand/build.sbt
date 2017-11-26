@@ -9,6 +9,7 @@ lazy val root = (project in file(".")).
     )),
     name := "finesand",
     logLevel := Level.Warn,
+    logBuffered in Test := false,
     libraryDependencies ++= Seq(
       scalaTest % Test
     )
