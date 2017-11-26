@@ -37,10 +37,7 @@ object BuildCounts {
         commits
     }
 
-    def main(args: Array[String]): Unit = {
-        val repo = "../data/community-corpus/log4j"
-        val repoCorpus = s"${repo}-corpus"
-        val commits = getCommits(repoCorpus)
+    def generateChangeContext(commits: List[Commit], repoCorpus: String): Unit = {
         Run.initGenerators()
         val completed = new AtomicInteger()
 
@@ -48,9 +45,6 @@ object BuildCounts {
           c.transactions
            .filter(t => t.path.endsWith(".java"))
         }).size
-
-        // Only use label for AST nodes in this list
-        val LABEL_TYPES = List("MethodInvocation", "SimpleType", "SimpleName", "BooleanLiteral", "NullLiteral")
 
         val changeContextIndex = commits.flatMap(c => {
           c.transactions
@@ -73,7 +67,12 @@ object BuildCounts {
                     val node = a.getNode
                     val operationKind = a.getName
                     val nodeType = dstTree.getTypeLabel(node)
-                    var label = if (LABEL_TYPES.contains(nodeType)) node.getLabel else ""
+                    val label = nodeType match {
+                      case "MethodInvocation" => if (node.getChildren.length > 1) node.getChild(1).getLabel else node.getLabel
+                      case "SimpleType" | "SimpleName" | "BooleanLiteral" | "NullLiteral" => node.getLabel
+                      case _ => ""
+                    }
+
                     // position refers to the index of character in the file that contains the action node
                     val position = node.getPos
                     val change = (operationKind, nodeType, label)
@@ -94,5 +93,12 @@ object BuildCounts {
           writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3}\n")
         })
         writer.close
+    }
+
+    def main(args: Array[String]): Unit = {
+        val repo = "../data/community-corpus/log4j"
+        val repoCorpus = s"${repo}-corpus"
+        val commits = getCommits(repoCorpus)
+        generateChangeContext(commits, repoCorpus)
     }
 }
