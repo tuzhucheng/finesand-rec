@@ -33,7 +33,10 @@ object PrepareData {
                     if (!fileParentPath.isEmpty)
                         Process(s"mkdir -p ${fileParentPath}", commitDir).!!
                     val file = new File(s"${commitDir}/${transaction.path}")
-                    val oldFile = new File(s"${commitDir}/${transaction.path}.old")
+
+                    val nameParts = transaction.path.split("/")
+                    val oldFilePath = (nameParts.init :+ ("old_" + nameParts.last)).mkString("/")
+                    val oldFile = new File(s"${commitDir}/${oldFilePath}")
                     (Process(s"git show ${transaction.newBlobId}", projectDir) #> file).!
                     (Process(s"git show ${transaction.oldBlobId}", projectDir) #> oldFile).!
                 })
