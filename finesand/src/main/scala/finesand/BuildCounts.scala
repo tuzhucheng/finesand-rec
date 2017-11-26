@@ -39,6 +39,33 @@ object BuildCounts {
         commits
     }
 
+    def getActionsForTrees(srcTree: TreeContext, dstTree: TreeContext, commit: Commit, transactionIdx: Int) = {
+        val src = srcTree.getRoot
+        val dst = dstTree.getRoot
+        val matcher = Matchers.getInstance().getMatcher(src, dst)
+        // Use `match` since match is a keyword in Scala
+        matcher.`match`
+        val generator = new ActionGenerator(src, dst, matcher.getMappings)
+        generator.generate
+        val actions = generator.getActions.toList.map(a => {
+            val node = a.getNode
+            val operationKind = a.getName
+            val nodeType = dstTree.getTypeLabel(node)
+            val label = nodeType match {
+                case "MethodInvocation" => if (node.getChildren.length > 1) node.getChild(1).getLabel else node.getLabel
+                case "SimpleType" | "SimpleName" | "BooleanLiteral" | "NullLiteral" => node.getLabel
+                case _ => ""
+            }
+
+            // position refers to the index of character in the file that contains the action node
+            val position = node.getPos
+            val change = (operationKind, nodeType, label)
+            val changeLoc = (commit.commitId, transactionIdx, position)
+            (change, changeLoc)
+        })
+        actions
+    }
+
     def generateChangeContext(commits: List[Commit], repoCorpus: String): Unit = {
         val completed = new AtomicInteger()
 
@@ -57,29 +84,7 @@ object BuildCounts {
                 val file2 = s"${repoCorpus}/${c.commitId}/${t.path}"
                 val srcTree = Generators.getInstance().getTree(file1)
                 val dstTree = Generators.getInstance().getTree(file2)
-                val src = srcTree.getRoot
-                val dst = dstTree.getRoot
-                val matcher = Matchers.getInstance().getMatcher(src, dst)
-                // Use `match` since match is a keyword in Scala
-                matcher.`match`
-                val generator = new ActionGenerator(src, dst, matcher.getMappings)
-                generator.generate
-                val actions = generator.getActions.toList.map(a => {
-                    val node = a.getNode
-                    val operationKind = a.getName
-                    val nodeType = dstTree.getTypeLabel(node)
-                    val label = nodeType match {
-                        case "MethodInvocation" => if (node.getChildren.length > 1) node.getChild(1).getLabel else node.getLabel
-                        case "SimpleType" | "SimpleName" | "BooleanLiteral" | "NullLiteral" => node.getLabel
-                        case _ => ""
-                    }
-
-                    // position refers to the index of character in the file that contains the action node
-                    val position = node.getPos
-                    val change = (operationKind, nodeType, label)
-                    val changeLoc = (c.commitId, i, position)
-                    (change, changeLoc)
-                })
+                val actions = getActionsForTrees(srcTree, dstTree, c, i)
 
                 val done = completed.incrementAndGet()
                 println(s"Processed ${done} / ${total} transactions")
