@@ -10,7 +10,6 @@ lazy val root = (project in file(".")).
     name := "finesand",
     logLevel := Level.Warn,
     libraryDependencies ++= Seq(
-      scalaTest % Test,
-      "com.github.gumtreediff" % "gumtree" % "2.0.0" pomOnly()
+      scalaTest % Test
     )
   )

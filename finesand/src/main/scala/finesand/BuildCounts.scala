@@ -38,7 +38,6 @@ object BuildCounts {
     }
 
     def generateChangeContext(commits: List[Commit], repoCorpus: String): Unit = {
-        Run.initGenerators()
         val completed = new AtomicInteger()
 
         val total = commits.flatMap(c => {
@@ -68,9 +67,9 @@ object BuildCounts {
                     val operationKind = a.getName
                     val nodeType = dstTree.getTypeLabel(node)
                     val label = nodeType match {
-                      case "MethodInvocation" => if (node.getChildren.length > 1) node.getChild(1).getLabel else node.getLabel
-                      case "SimpleType" | "SimpleName" | "BooleanLiteral" | "NullLiteral" => node.getLabel
-                      case _ => ""
+                        case "MethodInvocation" => if (node.getChildren.length > 1) node.getChild(1).getLabel else node.getLabel
+                        case "SimpleType" | "SimpleName" | "BooleanLiteral" | "NullLiteral" => node.getLabel
+                        case _ => ""
                     }
 
                     // position refers to the index of character in the file that contains the action node
@@ -95,10 +94,73 @@ object BuildCounts {
         writer.close
     }
 
+    def generateCodeContext(commits: List[Commit], repoCorpus: String): Unit = {
+        val completed = new AtomicInteger()
+
+        val total = commits.flatMap(c => {
+          c.transactions
+           .filter(t => t.path.endsWith(".java"))
+        }).size
+
+        val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
+
+        val codeContextIndex = commits.flatMap(c => {
+          c.transactions
+           .filter(t => t.path.endsWith(".java"))
+           .zipWithIndex.flatMap{ case (t, i) => {
+                val newFile = s"${repoCorpus}/${c.commitId}/${t.path}"
+                val dstTree = Generators.getInstance().getTree(newFile)
+                val dst = dstTree.getRoot
+                val tokens = dst.preOrder.toList.map(n => {
+                    val nodeType = dstTree.getTypeLabel(n)
+                    val label = nodeType match {
+                        case "ForStatement" | "EnhancedForStatement" => "for"
+                        case "WhileStatement" => "while"
+                        case "DoStatement" => "do"
+                        case "IfStatement" => "if"
+                        case "ElseStatement" => "else"
+                        case "SwitchStatement" => "switch"
+                        case "SwitchCase" => "case"
+                        case "BreakStatement" => "break"
+                        case "ContinueStatement" => "continue"
+                        case "ThrowStatement" => "throw"
+                        case "TryStatement" => "try"
+                        case "CatchClause" => "catch"
+                        case "Finally" => "finally"
+                        case "SynchronizedStatement" => "synchronized"
+                        case "MethodInvocation" => if (n.getChildren.length > 1) n.getChild(1).getLabel else n.getLabel
+                        case "SimpleType" | "SimpleName" | "BooleanLiteral" | "NullLiteral" => n.getLabel
+                        case _ => ""
+                    }
+
+                    // position refers to the index of character in the file that contains the action node
+                    val position = n.getPos
+                    val token = ("Token", nodeType, label)
+                    val tokenLoc = (c.commitId, i, position)
+                    (token, tokenLoc)
+                }).filterNot(t => disallowedTypes.contains(t._1._2))
+
+                val done = completed.incrementAndGet()
+                println(s"Processed ${done} / ${total} transactions")
+
+                tokens
+            }}
+        })
+
+        val codeContextFile = s"${repoCorpus}/code_context.txt"
+        val writer = new BufferedWriter(new FileWriter(codeContextFile))
+        codeContextIndex.foreach(c => {
+          writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3}\n")
+        })
+        writer.close
+    }
+
     def main(args: Array[String]): Unit = {
         val repo = "../data/community-corpus/log4j"
         val repoCorpus = s"${repo}-corpus"
         val commits = getCommits(repoCorpus)
+        Run.initGenerators()
         generateChangeContext(commits, repoCorpus)
+        generateCodeContext(commits, repoCorpus)
     }
 }
