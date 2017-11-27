@@ -77,7 +77,7 @@ object BuildCounts {
     actions
   }
 
-  def generateChangeContext(commits: List[Commit], repoCorpus: String): Unit = {
+  def generateChangeContext(commits: List[Commit], repoCorpus: String, group: Int): Unit = {
     val completed = new AtomicInteger()
 
     val total = commits.flatMap(c => {
@@ -85,33 +85,36 @@ object BuildCounts {
         .filter(t => t.path.endsWith(".java"))
     }).size
 
-    val changeContextIndex = commits.flatMap(c => {
-      c.transactions
-        .filter(t => t.path.endsWith(".java"))
-        .zipWithIndex.flatMap{ case (t, i) => {
-          val nameParts = t.path.split("/")
-          val oldFilePath = (nameParts.init :+ ("old_" + nameParts.last)).mkString("/")
-          val file1 = s"${repoCorpus}/${c.commitId}/${oldFilePath}"
-          val file2 = s"${repoCorpus}/${c.commitId}/${t.path}"
-          val srcTree = Generators.getInstance().getTree(file1)
-          val dstTree = Generators.getInstance().getTree(file2)
-          val actions = getActionsForTrees(srcTree, dstTree, c, i)
+    commits.grouped(group).zipWithIndex.foreach { case (commitsGroup, partNum) => {
+      val partialChangeContextIndex = commitsGroup.flatMap(c => {
+        c.transactions
+          .filter(t => t.path.endsWith(".java"))
+          .zipWithIndex.flatMap{ case (t, i) => {
+            val nameParts = t.path.split("/")
+            val oldFilePath = (nameParts.init :+ ("old_" + nameParts.last)).mkString("/")
+            val file1 = s"${repoCorpus}/${c.commitId}/${oldFilePath}"
+            val file2 = s"${repoCorpus}/${c.commitId}/${t.path}"
+            val srcTree = Generators.getInstance().getTree(file1)
+            val dstTree = Generators.getInstance().getTree(file2)
+            val actions = getActionsForTrees(srcTree, dstTree, c, i)
 
-          val done = completed.incrementAndGet()
-          if (done % 100 == 0) {
-            println(s"Processed ${done} / ${total} transactions")
-          }
+            val done = completed.incrementAndGet()
+            if (done % 100 == 0) {
+              println(s"Processed ${done} / ${total} transactions")
+            }
 
-          actions
-        }}
-    })
+            actions
+          }}
+      })
 
-    val changeContextFile = s"${repoCorpus}/change_context.txt"
-    val writer = new BufferedWriter(new FileWriter(changeContextFile))
-    changeContextIndex.foreach(c => {
-      writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
-    })
-    writer.close
+      val partialChangeContextFile = s"${repoCorpus}/change_context_part_${partNum}.txt"
+      val writer = new BufferedWriter(new FileWriter(partialChangeContextFile))
+      partialChangeContextIndex.foreach(c => {
+        writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
+      })
+      writer.close
+    }}
+
   }
 
   def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int) = {
@@ -157,7 +160,7 @@ object BuildCounts {
     tokens
   }
 
-  def generateCodeContext(commits: List[Commit], repoCorpus: String): Unit = {
+  def generateCodeContext(commits: List[Commit], repoCorpus: String, group: Int): Unit = {
     val completed = new AtomicInteger()
 
     val total = commits.flatMap(c => {
@@ -165,40 +168,42 @@ object BuildCounts {
         .filter(t => t.path.endsWith(".java"))
     }).size
 
-    val codeContextIndex = commits.flatMap(c => {
-      c.transactions
-        .filter(t => t.path.endsWith(".java"))
-        .zipWithIndex.flatMap{ case (t, i) => {
-          val newFile = s"${repoCorpus}/${c.commitId}/${t.path}"
-          val dstTree = Generators.getInstance().getTree(newFile)
-          val tokens = getTokensForTree(dstTree, c, i)
+    commits.grouped(group).zipWithIndex.foreach{ case (commitsGroup, partNum) => {
+      val partialCodeContextIndex = commitsGroup.flatMap(c => {
+        c.transactions
+          .filter(t => t.path.endsWith(".java"))
+          .zipWithIndex.flatMap{ case (t, i) => {
+            val newFile = s"${repoCorpus}/${c.commitId}/${t.path}"
+            val dstTree = Generators.getInstance().getTree(newFile)
+            val tokens = getTokensForTree(dstTree, c, i)
 
-          val done = completed.incrementAndGet()
-          if (done % 100 == 0) {
-            println(s"Processed ${done} / ${total} transactions")
-          }
+            val done = completed.incrementAndGet()
+            if (done % 100 == 0) {
+              println(s"Processed ${done} / ${total} transactions")
+            }
 
-          tokens
-        }}
-    })
+            tokens
+          }}
+      })
 
-    val codeContextFile = s"${repoCorpus}/code_context.txt"
-    val writer = new BufferedWriter(new FileWriter(codeContextFile))
-    codeContextIndex.foreach(c => {
-      writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
-    })
-    writer.close
+      val partialCodeContextFile = s"${repoCorpus}/code_context_part_${partNum}.txt"
+      val writer = new BufferedWriter(new FileWriter(partialCodeContextFile))
+      partialCodeContextIndex.foreach(c => {
+        writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
+      })
+      writer.close
+    }}
   }
 
   def main(args: Array[String]): Unit = {
-    //val conf = new Conf(args)
-    //val repo = conf.repo()
-    val repo = args(0)
+    val conf = new Conf(args)
+    val repo = conf.repo()
+    val group = conf.group()
     val repoCorpus = s"${repo}-corpus"
     val commits = getCommits(repoCorpus)
 
     Run.initGenerators()
-    generateChangeContext(commits, repoCorpus)
-    generateCodeContext(commits, repoCorpus)
+    generateChangeContext(commits, repoCorpus, group)
+    generateCodeContext(commits, repoCorpus, group)
   }
 }

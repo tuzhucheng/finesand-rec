@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Takes one command line arg - the number of jobs to use
+# Args: [n_jobs] [optional commands to parallel]
 
 repos=(../data/community-corpus/*/)
 
@@ -21,12 +21,15 @@ for i in "${!repos[@]}" ; do
     commands+=("$command")
 done
 
-parallel --eta -j $1 sbt ::: "${commands[@]}"
+parallel $2 --eta -j $1 sbt ::: "${commands[@]}"
 
-#for i in "${!repos[@]}" ; do
-    #echo "${repos[$i]}"
-    #echo "${commands[$i]}"
+commands2=()
+for i in "${!repos[@]}" ; do
+    repo="${repos[$i]}"
+    sbtargs2="runMain finesand.BuildCounts --repo $repo --group 1000"
+    command="$sbtargs2"
+    commands2+=("$command")
+done
 
-    #sbtargs2="runMain finesand.BuildCounts $arg"
-    #sbt "$sbtargs2"
-#done
+parallel $2 --eta -j $1 sbt ::: "${commands2[@]}"
+
