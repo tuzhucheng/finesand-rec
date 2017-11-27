@@ -9,7 +9,7 @@ object TrainTestSplit {
   def split(path: String, ratio: Double, branch: String = "trunk") : (List[Commit], List[Commit]) = {
     val projectDir = new File(path)
     // newest commits at bottom when reversed.
-    val commitIds = Process(s"git rev-list --date-order $branch --reverse", projectDir).!!.split("\n")
+    val commitIds = Process(s"git rev-list --date-order $branch --reverse --abbrev-commit", projectDir).!!.split("\n")
     val commits = commitIds.zipWithIndex.map { case (cid, idx) => {
       if (idx % 100 == 0) {
         println(s"Processing ${idx+1} / ${commitIds.length} commits")
