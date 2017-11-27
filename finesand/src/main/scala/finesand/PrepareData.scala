@@ -11,12 +11,13 @@ object PrepareData {
     //val conf = new Conf(args)
     //val repo = conf.repo()
     val repo = args(0)
+    val branch = args(1)
     val projectDir = new File(repo)
     val projectName = repo.split("/").last
     val reposDir = projectDir.getParentFile()
 
     // Split commits into training and testing set
-    val (trainCommits, testCommits) = TrainTestSplit.split(repo, 0.9)
+    val (trainCommits, testCommits) = TrainTestSplit.split(repo, 0.9, branch)
     val trainCommitsMap = trainCommits.map(c => c.commitId -> c).toMap
 
     // Build corpus directory, which contains directories of commits
