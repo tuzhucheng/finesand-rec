@@ -19,8 +19,6 @@ import com.github.gumtreediff.tree.{ITree,TreeContext}
 import finesand.model.{Commit,PredictionPoint,Transaction}
 
 object BuildCounts {
-  type PredictionPointKey = (String, Int, String, String)
-  type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
   val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
 
   def getCommits(corpusDir: String): List[Commit] = {
@@ -42,7 +40,7 @@ object BuildCounts {
     commits
   }
 
-  def getActionsForTrees(srcTree: TreeContext, dstTree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType) = {
+  def getActionsForTrees(srcTree: TreeContext, dstTree: TreeContext, commit: Commit, transactionIdx: Int) = {
     val src = srcTree.getRoot
     val dst = dstTree.getRoot
     val matcher = Matchers.getInstance().getMatcher(src, dst)
@@ -50,8 +48,6 @@ object BuildCounts {
     matcher.`match`
     val generator = new ActionGenerator(src, dst, matcher.getMappings)
     generator.generate
-
-    val predictionPointStage = new ListBuffer[(PredictionPoint, Int)]()
 
     val actions = generator.getActions.toList.zipWithIndex.map{ case (a, i) => {
       val node = a.getNode
@@ -61,11 +57,6 @@ object BuildCounts {
         case "MethodInvocation" => if (node.getChildren.length > 1) node.getChild(1).getLabel else node.getLabel
         case "SimpleType" | "SimpleName" | "BooleanLiteral" | "NullLiteral" => node.getLabel
         case _ => ""
-      }
-
-      if (operationKind == "INS" && nodeType == "MethodInvocation" && node.getChildren.length > 1) {
-        val predictionPt = new PredictionPoint(commit.commitId, transactionIdx, node.getChild(0).getLabel, node.getChild(1).getLabel)
-        predictionPointStage += ((predictionPt, i))
       }
 
       // position refers to the index of character in the file that contains the action node
@@ -83,25 +74,10 @@ object BuildCounts {
       (change, changeLoc)
     }}
 
-    for (ppTuple <- predictionPointStage) {
-      val (pp, actionIdx) = ppTuple
-      val changeContext = new ListBuffer[PredictionPoint#ScoreComponent]()
-      val ppAction = actions(actionIdx)
-      for (i <- 0 until actionIdx) {
-        val action = actions(i)
-        val scopeWeight = if (ppAction._2._4 == action._2._4) 1 else 0.5
-        val depWeight = if (ppAction._1._3 == pp.variableName) 1 else 0.5
-        val scoreComponent = ((action._1._1, action._1._2, action._1._3), scopeWeight, depWeight, action._2._3)
-        changeContext += scoreComponent
-      }
-      pp.changeContext = Some(changeContext.toList)
-      predictionPoints(pp.key) = pp
-    }
-
     actions
   }
 
-  def generateChangeContext(commits: List[Commit], repoCorpus: String, predictionPoints: PredictionPointMapType): Unit = {
+  def generateChangeContext(commits: List[Commit], repoCorpus: String): Unit = {
     val completed = new AtomicInteger()
 
     val total = commits.flatMap(c => {
@@ -119,7 +95,7 @@ object BuildCounts {
           val file2 = s"${repoCorpus}/${c.commitId}/${t.path}"
           val srcTree = Generators.getInstance().getTree(file1)
           val dstTree = Generators.getInstance().getTree(file2)
-          val actions = getActionsForTrees(srcTree, dstTree, c, i, predictionPoints)
+          val actions = getActionsForTrees(srcTree, dstTree, c, i)
 
           val done = completed.incrementAndGet()
           println(s"Processed ${done} / ${total} transactions")
@@ -131,14 +107,12 @@ object BuildCounts {
     val changeContextFile = s"${repoCorpus}/change_context.txt"
     val writer = new BufferedWriter(new FileWriter(changeContextFile))
     changeContextIndex.foreach(c => {
-      writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3}\n")
+      writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
     })
     writer.close
   }
 
-  def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType) = {
-    val predictionPointStage = new ListBuffer[(PredictionPointKey,Int)]()
-
+  def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int) = {
     val tokens = tree.getRoot.preOrder.toList
       .filterNot(t => disallowedTypes.contains(tree.getTypeLabel(t))).zipWithIndex
       .map{ case (n, i) => {
@@ -163,13 +137,6 @@ object BuildCounts {
         case _ => ""
       }
 
-      if (nodeType == "MethodInvocation" && n.getChildren.length > 1) {
-        val predictionPtKey = (commit.commitId, transactionIdx, n.getChild(0).getLabel, n.getChild(1).getLabel)
-        if (predictionPoints.contains(predictionPtKey)) {
-          predictionPointStage += ((predictionPtKey, i))
-        }
-      }
-
       // position refers to the index of character in the file that contains the action node
       val position = n.getPos
 
@@ -185,25 +152,10 @@ object BuildCounts {
       (token, tokenLoc)
     }}
 
-    for (ppTuple <- predictionPointStage) {
-      val (ppKey, tokenIdx) = ppTuple
-      val codeContext = new ListBuffer[PredictionPoint#ScoreComponent]()
-      val ppToken = tokens(tokenIdx)
-      var pp = predictionPoints(ppKey)
-      for (i <- 0 until tokenIdx) {
-        val token = tokens(i)
-        val scopeWeight = if (ppToken._2._4 == token._2._4) 1 else 0.5
-        val depWeight = if (ppToken._1._3 == pp.variableName) 1 else 0.5
-        val scoreComponent = ((token._1._1, token._1._2, token._1._3), scopeWeight, depWeight, token._2._3)
-        codeContext += scoreComponent
-      }
-      pp.codeContext = Some(codeContext.toList)
-    }
-
     tokens
   }
 
-  def generateCodeContext(commits: List[Commit], repoCorpus: String, predictionPoints: PredictionPointMapType): Unit = {
+  def generateCodeContext(commits: List[Commit], repoCorpus: String): Unit = {
     val completed = new AtomicInteger()
 
     val total = commits.flatMap(c => {
@@ -217,7 +169,7 @@ object BuildCounts {
         .zipWithIndex.flatMap{ case (t, i) => {
           val newFile = s"${repoCorpus}/${c.commitId}/${t.path}"
           val dstTree = Generators.getInstance().getTree(newFile)
-          val tokens = getTokensForTree(dstTree, c, i, predictionPoints)
+          val tokens = getTokensForTree(dstTree, c, i)
 
           val done = completed.incrementAndGet()
           println(s"Processed ${done} / ${total} transactions")
@@ -229,7 +181,7 @@ object BuildCounts {
     val codeContextFile = s"${repoCorpus}/code_context.txt"
     val writer = new BufferedWriter(new FileWriter(codeContextFile))
     codeContextIndex.foreach(c => {
-      writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3}\n")
+      writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
     })
     writer.close
   }
@@ -238,14 +190,9 @@ object BuildCounts {
     val repo = "../data/community-corpus/log4j"
     val repoCorpus = s"${repo}-corpus"
     val commits = getCommits(repoCorpus)
-    var predictionPoints: PredictionPointMapType = collection.mutable.Map()
 
     Run.initGenerators()
-    generateChangeContext(commits, repoCorpus, predictionPoints)
-    generateCodeContext(commits, repoCorpus, predictionPoints)
-
-    val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/predictionPoints"))
-    oos.writeObject(predictionPoints)
-    oos.close
+    generateChangeContext(commits, repoCorpus)
+    generateCodeContext(commits, repoCorpus)
   }
 }
