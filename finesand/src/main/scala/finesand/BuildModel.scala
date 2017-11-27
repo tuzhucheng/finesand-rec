@@ -64,6 +64,9 @@ object BuildModel {
   }
 
   def main(args: Array[String]): Unit = {
+    //val conf = new Conf(args)
+    //val repo = conf.repo()
+    val repo = args(0)
     val warehouseLocation = "file:${system:user.dir}/spark-warehouse"
     val spark = SparkSession
       .builder()
@@ -75,7 +78,7 @@ object BuildModel {
     spark.sparkContext.setLogLevel("WARN")
     import spark.implicits._
 
-    val corpusPath = "../data/community-corpus/log4j-corpus"
+    val corpusPath = s"${repo}-corpus"
     val changeContextIndex = getChangeContextIndex(spark, corpusPath)
     val codeContextIndex = getCodeContextIndex(spark, corpusPath)
   }

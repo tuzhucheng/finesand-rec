@@ -8,7 +8,9 @@ import finesand.model.{Commit,Transaction}
 
 object PrepareData {
   def main(args: Array[String]): Unit = {
-    val repo = "../data/community-corpus/log4j"
+    //val conf = new Conf(args)
+    //val repo = conf.repo()
+    val repo = args(0)
     val projectDir = new File(repo)
     val projectName = repo.split("/").last
     val reposDir = projectDir.getParentFile()

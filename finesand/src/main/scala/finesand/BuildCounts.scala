@@ -191,7 +191,9 @@ object BuildCounts {
   }
 
   def main(args: Array[String]): Unit = {
-    val repo = "../data/community-corpus/log4j"
+    //val conf = new Conf(args)
+    //val repo = conf.repo()
+    val repo = args(0)
     val repoCorpus = s"${repo}-corpus"
     val commits = getCommits(repoCorpus)
 
