@@ -6,7 +6,7 @@ import java.io.File
 import finesand.model.{Commit,Transaction}
 
 object TrainTestSplit {
-  def split(path: String, ratio: Double, branch: String = "trunk") : (Iterator[Commit], Iterator[Commit]) = {
+  def split(path: String, ratio: Double, branch: String = "trunk") : (Seq[Commit], Seq[Commit]) = {
     val projectDir = new File(path)
     // newest commits at bottom when reversed.
     val commitIds = Process(s"git rev-list --date-order $branch --reverse --abbrev-commit", projectDir).!!.split("\n")
@@ -27,10 +27,10 @@ object TrainTestSplit {
       new Commit(cid, parent, modifiedFiles)
     } }
 
-    val (trainPart, testPart) = commits.zipWithIndex.partition{ case (c, i) => i < Math.floor(commits.length * ratio) }
-    val train = trainPart.map(t => t._1)
-    val test = testPart.map(t => t._1)
-    println(s"$path has ${commits.length} commits, and ${train.length} are used for training.")
+    val (trainPart, testPart) = commits.zipWithIndex.partition{ case (c, i) => i < Math.floor(commitIds.length * ratio) }
+    val train = trainPart.map(t => t._1).toSeq
+    val test = testPart.map(t => t._1).toSeq
+    println(s"$path has ${commitIds.length} commits, and ${train.length} are used for training, ${test.length} are used for testing.")
     (train, test)
   }
 }

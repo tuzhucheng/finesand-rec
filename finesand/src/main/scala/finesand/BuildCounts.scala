@@ -18,14 +18,16 @@ import com.github.gumtreediff.tree.{ITree,TreeContext}
 import finesand.model.{Commit,PredictionPoint,Transaction}
 
 object BuildCounts {
+  type PredictionPointKey = (String, Int)
+  type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
   val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
 
-  def getCommits(corpusDir: String): List[Commit] = {
+  def getCommits(corpusDir: String): Seq[Commit] = {
     val dir = new File(corpusDir)
     if (!dir.exists || !dir.isDirectory)
-      List[Commit]()
+      Seq[Commit]()
 
-    val commitDirs: List[File] = dir.listFiles.toList.filter(f => f.isDirectory)
+    val commitDirs: Seq[File] = dir.listFiles.toSeq.filter(f => f.isDirectory)
     val commits = commitDirs.map(d => {
       val commitHash = d.getName
       val transactionsFile = new File(d, "finesand_transactions.txt")
@@ -39,7 +41,7 @@ object BuildCounts {
     commits
   }
 
-  def getActionsForTrees(srcTree: TreeContext, dstTree: TreeContext, commit: Commit, transactionIdx: Int) = {
+  def getActionsForTrees(srcTree: TreeContext, dstTree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType) = {
     val src = srcTree.getRoot
     val dst = dstTree.getRoot
     val matcher = Matchers.getInstance().getMatcher(src, dst)
@@ -47,8 +49,11 @@ object BuildCounts {
     matcher.`match`
     val generator = new ActionGenerator(src, dst, matcher.getMappings)
     generator.generate
+    val actionList = generator.getActions.toList
+    val midpoint = Math.round(Math.floor(actionList.length / 2)) + 1
+    var predictionPt: Option[(PredictionPoint, Int)] = None
 
-    val actions = generator.getActions.toList.zipWithIndex.map{ case (a, i) => {
+    val actions = actionList.zipWithIndex.map{ case (a, i) => {
       val node = a.getNode
       val operationKind = a.getName
       val nodeType = dstTree.getTypeLabel(node)
@@ -68,15 +73,34 @@ object BuildCounts {
       }
       val parentMethodPos = temp.getPos
 
+      if (!predictionPt.isDefined && i >= midpoint && operationKind == "INS" && nodeType == "MethodInvocation" && node.getChildren.length > 1) {
+        predictionPt = Some((new PredictionPoint(commit.commitId, transactionIdx, node.getChild(0).getLabel, node.getChild(1).getLabel, position, parentMethodPos), i))
+      }
+
       val change = (operationKind, nodeType, label)
       val changeLoc = (commit.commitId, transactionIdx, position, parentMethodPos)
       (change, changeLoc)
     }}
 
+    if (predictionPt.isDefined) {
+      val (pp, actionIdx) = predictionPt.get
+      val changeContext = new ListBuffer[PredictionPoint#ScoreComponent]()
+      val ppAction = actions(actionIdx)
+      for (i <- 0 until actionIdx) {
+        val action = actions(i)
+        val scopeWeight = if (ppAction._2._4 == action._2._4) 1 else 0.5
+        val depWeight = if (ppAction._1._3 == pp.variableName) 1 else 0.5
+        val scoreComponent = ((action._1._1, action._1._2, action._1._3), scopeWeight, depWeight, action._2._3)
+        changeContext += scoreComponent
+      }
+      pp.changeContext = Some(changeContext.toList)
+      predictionPoints(pp.key) = pp
+    }
+
     actions
   }
 
-  def generateChangeContext(commits: List[Commit], repoCorpus: String, group: Int): Unit = {
+  def generateChangeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType): Unit = {
     val partialChangeContextIndex = commits.flatMap(c => {
       c.transactions
         .filter(t => t.path.endsWith(".java"))
@@ -87,7 +111,7 @@ object BuildCounts {
           val file2 = s"${repoCorpus}/${c.commitId}/${t.path}"
           val srcTree = Generators.getInstance().getTree(file1)
           val dstTree = Generators.getInstance().getTree(file2)
-          val actions = getActionsForTrees(srcTree, dstTree, c, i)
+          val actions = getActionsForTrees(srcTree, dstTree, c, i, predictionPoints)
 
           actions
         }}
@@ -101,7 +125,9 @@ object BuildCounts {
     writer.close
   }
 
-  def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int) = {
+  def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType) = {
+    var predictionPt: Option[PredictionPoint] = predictionPoints get (commit.commitId, transactionIdx)
+
     val tokens = tree.getRoot.preOrder.toList
       .filterNot(t => disallowedTypes.contains(tree.getTypeLabel(t))).zipWithIndex
       .map{ case (n, i) => {
@@ -141,17 +167,31 @@ object BuildCounts {
       (token, tokenLoc)
     }}
 
+    if (predictionPt.isDefined) {
+      val codeContext = new ListBuffer[PredictionPoint#ScoreComponent]()
+      val pp = predictionPt.get
+      tokens.foreach { case (token, tokenLoc) => {
+        if (pp.pos > tokenLoc._3) {
+          val scopeWeight = if (pp.parentPos == tokenLoc._4) 1 else 0.5
+          val depWeight = if (pp.variableName == token._3) 1 else 0.5
+          val scoreComponent = (token, scopeWeight, depWeight, tokenLoc._3)
+          codeContext += scoreComponent
+        }
+      }}
+      predictionPoints((commit.commitId, transactionIdx)) = pp
+    }
+
     tokens
   }
 
-  def generateCodeContext(commits: List[Commit], repoCorpus: String, group: Int): Unit = {
+  def generateCodeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType): Unit = {
     val partialCodeContextIndex = commits.flatMap(c => {
       c.transactions
         .filter(t => t.path.endsWith(".java"))
         .zipWithIndex.flatMap{ case (t, i) => {
           val newFile = s"${repoCorpus}/${c.commitId}/${t.path}"
           val dstTree = Generators.getInstance().getTree(newFile)
-          val tokens = getTokensForTree(dstTree, c, i)
+          val tokens = getTokensForTree(dstTree, c, i, predictionPoints)
 
           tokens
         }}
@@ -171,11 +211,18 @@ object BuildCounts {
     val group = conf.group()
     val repoCorpus = s"${repo}-corpus"
     val commits = getCommits(repoCorpus)
+    var predictionPoints: PredictionPointMapType = collection.mutable.Map()
 
     Run.initGenerators()
     commits.grouped(group).zipWithIndex.foreach { case (commitsGroup, partNum) => {
-      generateChangeContext(commitsGroup, repoCorpus, partNum)
-      generateCodeContext(commitsGroup, repoCorpus, partNum)
+      generateChangeContext(commitsGroup, repoCorpus, partNum, predictionPoints)
+      generateCodeContext(commitsGroup, repoCorpus, partNum, predictionPoints)
+
+      val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/predictionPointsPart${partNum}"))
+      oos.writeObject(predictionPoints)
+      oos.close
+      predictionPoints.clear
+
       println(s"Processed ${(partNum + 1) * group} / ${commits.length} commits")
     }}
   }
