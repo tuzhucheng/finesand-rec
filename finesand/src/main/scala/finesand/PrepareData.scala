@@ -8,10 +8,9 @@ import finesand.model.{Commit,Transaction}
 
 object PrepareData {
   def main(args: Array[String]): Unit = {
-    //val conf = new Conf(args)
-    //val repo = conf.repo()
-    val repo = args(0)
-    val branch = args(1)
+    val conf = new Conf(args)
+    val repo = conf.repo()
+    val branch = conf.branch()
     val projectDir = new File(repo)
     val projectName = repo.split("/").last
     val reposDir = projectDir.getParentFile()
