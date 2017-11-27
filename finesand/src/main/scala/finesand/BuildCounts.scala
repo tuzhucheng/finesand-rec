@@ -4,7 +4,7 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
 import scala.io.Source
 import sys.process._
-import java.io.{BufferedWriter,File,FileWriter}
+import java.io.{BufferedWriter,File,FileWriter,FileOutputStream,ObjectOutputStream}
 import java.util.concurrent.atomic.AtomicInteger
 
 import com.github.gumtreediff.actions.ActionGenerator
@@ -137,7 +137,11 @@ object BuildCounts {
   }
 
   def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType) = {
-    val tokens = tree.getRoot.preOrder.toList.map(n => {
+    val predictionPointStage = new ListBuffer[(PredictionPointKey,Int)]()
+
+    val tokens = tree.getRoot.preOrder.toList
+      .filterNot(t => disallowedTypes.contains(tree.getTypeLabel(t))).zipWithIndex
+      .map{ case (n, i) => {
       val nodeType = tree.getTypeLabel(n)
       val label = nodeType match {
         case "ForStatement" | "EnhancedForStatement" => "for"
@@ -159,12 +163,43 @@ object BuildCounts {
         case _ => ""
       }
 
+      if (nodeType == "MethodInvocation" && n.getChildren.length > 1) {
+        val predictionPtKey = (commit.commitId, transactionIdx, n.getChild(0).getLabel, n.getChild(1).getLabel)
+        if (predictionPoints.contains(predictionPtKey)) {
+          predictionPointStage += ((predictionPtKey, i))
+        }
+      }
+
       // position refers to the index of character in the file that contains the action node
       val position = n.getPos
+
+      // get parent method pos for weighting
+      var temp = n
+      while (!temp.isRoot && tree.getTypeLabel(temp) != "MethodDeclaration") {
+        temp = temp.getParent
+      }
+      val parentMethodPos = temp.getPos
+
       val token = ("Token", nodeType, label)
-      val tokenLoc = (commit.commitId, transactionIdx, position)
+      val tokenLoc = (commit.commitId, transactionIdx, position, parentMethodPos)
       (token, tokenLoc)
-    }).filterNot(t => disallowedTypes.contains(t._1._2))
+    }}
+
+    for (ppTuple <- predictionPointStage) {
+      val (ppKey, tokenIdx) = ppTuple
+      val codeContext = new ListBuffer[PredictionPoint#ScoreComponent]()
+      val ppToken = tokens(tokenIdx)
+      var pp = predictionPoints(ppKey)
+      for (i <- 0 until tokenIdx) {
+        val token = tokens(i)
+        val scopeWeight = if (ppToken._2._4 == token._2._4) 1 else 0.5
+        val depWeight = if (ppToken._1._3 == pp.variableName) 1 else 0.5
+        val scoreComponent = ((token._1._1, token._1._2, token._1._3), scopeWeight, depWeight, token._2._3)
+        codeContext += scoreComponent
+      }
+      pp.codeContext = Some(codeContext.toList)
+    }
+
     tokens
   }
 
@@ -208,5 +243,9 @@ object BuildCounts {
     Run.initGenerators()
     generateChangeContext(commits, repoCorpus, predictionPoints)
     generateCodeContext(commits, repoCorpus, predictionPoints)
+
+    val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/predictionPoints"))
+    oos.writeObject(predictionPoints)
+    oos.close
   }
 }

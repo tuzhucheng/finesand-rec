@@ -12,7 +12,8 @@ class Commit(val commitId: String, val parent: Option[String], val transactions:
 
 }
 
-class PredictionPoint(val commitId: String, val transactionIdx: Int, val variableName: String, val methodName: String) {
+@SerialVersionUID(100L)
+class PredictionPoint(val commitId: String, val transactionIdx: Int, val variableName: String, val methodName: String) extends Serializable {
   type Change = (String, String, String) // operation kind, node type, label
   type ScoreComponent = (Change, Double, Double, Int) // change, scope weight, dep weight, position
 
