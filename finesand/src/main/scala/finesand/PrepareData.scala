@@ -49,7 +49,7 @@ object PrepareData {
         bw.close()
       }
       val done = completed.incrementAndGet()
-      if (done % 100 == 0) {
+      if (done % 1000 == 0) {
         println(s"Processing commit changed files, ${done} / ${trainCommitsMap.size} commits")
       }
     }
