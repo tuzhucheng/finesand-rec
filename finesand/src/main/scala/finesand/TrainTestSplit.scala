@@ -6,12 +6,12 @@ import java.io.File
 import finesand.model.{Commit,Transaction}
 
 object TrainTestSplit {
-  def split(path: String, ratio: Double, branch: String = "trunk") : (List[Commit], List[Commit]) = {
+  def split(path: String, ratio: Double, branch: String = "trunk") : (Iterator[Commit], Iterator[Commit]) = {
     val projectDir = new File(path)
     // newest commits at bottom when reversed.
     val commitIds = Process(s"git rev-list --date-order $branch --reverse --abbrev-commit", projectDir).!!.split("\n")
-    val commits = commitIds.zipWithIndex.map { case (cid, idx) => {
-      if (idx % 100 == 0) {
+    val commits = commitIds.toIterator.zipWithIndex.map { case (cid, idx) => {
+      if (idx % 1000 == 0) {
         println(s"Processing ${idx+1} / ${commitIds.length} commits")
       }
       val filesChanged = Process(s"git diff-tree --no-commit-id -r $cid", projectDir).!!.split("\n").toList
@@ -25,9 +25,11 @@ object TrainTestSplit {
       }).filter(t => t.changeType == "M")
       val parent = if (idx != 0) Some(commitIds(idx-1)) else None
       new Commit(cid, parent, modifiedFiles)
-    } }.toList
+    } }
 
-    val (train, test) = commits.splitAt(Math.floor(commits.length * ratio).toInt)
+    val (trainPart, testPart) = commits.zipWithIndex.partition{ case (c, i) => i < Math.floor(commits.length * ratio) }
+    val train = trainPart.map(t => t._1)
+    val test = testPart.map(t => t._1)
     println(s"$path has ${commits.length} commits, and ${train.length} are used for training.")
     (train, test)
   }
