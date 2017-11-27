@@ -1,5 +1,7 @@
 package finesand
 
+import java.io.{FileOutputStream,ObjectOutputStream}
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
@@ -36,7 +38,7 @@ object BuildModel {
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
       .schema(schema)
-      .csv(s"${corpusPath}/change_context.txt")
+      .csv(s"${corpusPath}/change_context_*.txt")
       .rdd
 
     val changeContextRDD = changeContextRawRDD.map(r => ((r.getAs[String](0), r.getAs[String](1), r.getAs[String](2)), collection.mutable.Map(((r.getAs[String](3), r.getAs[Int](4)) -> List((r.getAs[Int](5), r.getAs[Int](6)))))))
@@ -49,7 +51,7 @@ object BuildModel {
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
       .schema(schema)
-      .csv(s"${corpusPath}/code_context.txt")
+      .csv(s"${corpusPath}/code_context_*.txt")
       .rdd
 
     val codeContextRDD = codeContextRawRDD.map(r => (r.getAs[String](2), collection.mutable.Map(((r.getAs[String](3), r.getAs[Int](4)) -> List((r.getAs[Int](5), r.getAs[Int](6)))))))
@@ -64,9 +66,9 @@ object BuildModel {
   }
 
   def main(args: Array[String]): Unit = {
-    //val conf = new Conf(args)
-    //val repo = conf.repo()
-    val repo = args(0)
+    val conf = new Conf(args)
+    val repo = conf.repo()
+    val repoCorpus = s"${repo}-corpus"
     val warehouseLocation = "file:${system:user.dir}/spark-warehouse"
     val spark = SparkSession
       .builder()
@@ -81,5 +83,17 @@ object BuildModel {
     val corpusPath = s"${repo}-corpus"
     val changeContextIndex = getChangeContextIndex(spark, corpusPath)
     val codeContextIndex = getCodeContextIndex(spark, corpusPath)
+
+
+    // Dump indexes to file for debugging later
+    val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
+    oos.writeObject(changeContextIndex)
+    oos.close
+
+    val oos2 = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/codeContextIndex"))
+    oos2.writeObject(codeContextIndex)
+    oos2.close
+
+    // To read, see https://alvinalexander.com/scala/how-to-use-serialization-in-scala-serializable-trait
   }
 }
