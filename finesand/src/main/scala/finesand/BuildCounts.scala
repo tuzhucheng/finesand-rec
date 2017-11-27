@@ -98,7 +98,9 @@ object BuildCounts {
           val actions = getActionsForTrees(srcTree, dstTree, c, i)
 
           val done = completed.incrementAndGet()
-          println(s"Processed ${done} / ${total} transactions")
+          if (done % 100 == 0) {
+            println(s"Processed ${done} / ${total} transactions")
+          }
 
           actions
         }}
@@ -172,7 +174,9 @@ object BuildCounts {
           val tokens = getTokensForTree(dstTree, c, i)
 
           val done = completed.incrementAndGet()
-          println(s"Processed ${done} / ${total} transactions")
+          if (done % 100 == 0) {
+            println(s"Processed ${done} / ${total} transactions")
+          }
 
           tokens
         }}
