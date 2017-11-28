@@ -1,13 +1,17 @@
 package finesand
 
-import java.io.{FileOutputStream,ObjectOutputStream}
+import java.io.{File,FileInputStream,FileOutputStream,ObjectInputStream,ObjectOutputStream}
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
 import org.rogach.scallop._
 
+import finesand.model.{Commit,PredictionPoint,Transaction}
+
 object BuildModel {
+  type PredictionPointKey = (String, Int)
+  type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
 
   type IndexMutableMap = collection.mutable.Map[(String, Int), List[(Int, Int)]]
 
@@ -65,6 +69,23 @@ object BuildModel {
     codeContextRDD.collectAsMap
   }
 
+  def getPredictionPoints(repoCorpus: String) = {
+    val serializedPredictionFiles = new File(repoCorpus).listFiles.filter(f => f.getName contains "predictionPointsPart").map(f => f.getCanonicalPath)
+    var predictionPoints: PredictionPointMapType = collection.mutable.Map()
+    serializedPredictionFiles.foreach(f => {
+      val ois = new ObjectInputStream(new FileInputStream(f)) {
+        override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] = {
+          try { Class.forName(desc.getName, false, getClass.getClassLoader) }
+          catch { case ex: ClassNotFoundException => super.resolveClass(desc) }
+        }
+      }
+      val currentMap = ois.readObject.asInstanceOf[PredictionPointMapType]
+      predictionPoints ++= currentMap
+      ois.close
+    })
+    predictionPoints
+  }
+
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
     val repo = conf.repo()
@@ -83,7 +104,7 @@ object BuildModel {
     val corpusPath = s"${repo}-corpus"
     val changeContextIndex = getChangeContextIndex(spark, corpusPath)
     val codeContextIndex = getCodeContextIndex(spark, corpusPath)
-
+    val predictionPoints = getPredictionPoints(corpusPath)
 
     // Dump indexes to file for debugging later
     val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
