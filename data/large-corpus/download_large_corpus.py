@@ -10,7 +10,7 @@ with open('repositories.json') as f:
     repositories = data['repositories']
     for repo in repositories:
         pprint(repo)
-        name = repo['url'].split('/')[-1]
+        name = repo['url'].split('/')[-1][:-4]
         if os.path.exists(name):
             print('Skipping..')
             continue
