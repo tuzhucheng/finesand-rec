@@ -7,24 +7,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import finesand.model.{Commit,Transaction}
 
 object PrepareData {
-  def main(args: Array[String]): Unit = {
-    val conf = new Conf(args)
-    val repo = conf.repo()
-    val branch = conf.branch()
-    val projectDir = new File(repo)
-    val projectName = repo.split("/").last
-    val reposDir = projectDir.getParentFile()
-
-    // Split commits into training and testing set
-    val (trainCommits, testCommits) = TrainTestSplit.split(repo, 0.9, branch)
-    val trainCommitsMap = trainCommits.map(c => c.commitId -> c).toMap
-
-    // Build corpus directory, which contains directories of commits
-    Process(s"mkdir -p ${projectName}-corpus", reposDir)!!
-    val corpusPath = s"${repo}-corpus"
+  def buildFileVersions(commitsMap: Map[String,Commit], corpusPath: String, projectDir: File) = {
     val corpusDir = new File(corpusPath)
     val completed = new AtomicInteger()
-    trainCommitsMap foreach {
+    commitsMap foreach {
       case (commitId, commit) => {
         Process(s"mkdir -p ${commitId}", corpusDir).!!
         val commitPath = s"${corpusPath}/${commitId}"
@@ -50,7 +36,38 @@ object PrepareData {
       }
       val done = completed.incrementAndGet()
       if (done % 1000 == 0) {
-        println(s"Processing commit changed files, ${done} / ${trainCommitsMap.size} commits")
+        println(s"Processing commit changed files, ${done} / ${commitsMap.size} commits")
+      }
+    }
+  }
+
+  def main(args: Array[String]): Unit = {
+    val conf = new Conf(args)
+    val repo = conf.repo()
+    val branch = conf.branch()
+    val splitRatio = conf.split()
+    val projectDir = new File(repo)
+    val projectName = repo.split("/").last
+    val reposDir = projectDir.getParentFile()
+
+    // Split commits into training and testing set
+    val (trainCommits, testCommits) = TrainTestSplit.split(repo, splitRatio, branch)
+    val trainCommitsMap = trainCommits.map(c => c.commitId -> c).toMap
+    val testCommitsMap = testCommits.map(c => c.commitId -> c).toMap
+
+    // Build corpus directory, which contains directories of commits
+    Process(s"mkdir -p ${projectName}-corpus", reposDir)!!
+    val corpusPath = s"${repo}-corpus"
+
+    buildFileVersions(trainCommitsMap, corpusPath, projectDir)
+    buildFileVersions(testCommitsMap, corpusPath, projectDir)
+
+    List((trainCommitsMap, "train"), (testCommitsMap, "test")).foreach {
+      case (commitsMap, label) => {
+        val changeFile = new File(s"${corpusPath}/${label}_commits.txt")
+        val bw = new BufferedWriter(new FileWriter(changeFile))
+        commitsMap foreach (kv => bw.write(kv._1 + "\n"))
+        bw.close()
       }
     }
   }
