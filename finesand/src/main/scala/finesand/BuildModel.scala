@@ -1,6 +1,6 @@
 package finesand
 
-import java.io.{File,FileInputStream,FileOutputStream,ObjectInputStream,ObjectOutputStream}
+import java.io.{BufferedWriter,File,FileInputStream,FileOutputStream,FileWriter,ObjectInputStream,ObjectOutputStream}
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
@@ -108,7 +108,7 @@ object BuildModel {
       val nCCi = cooccurTransactions.size
       val dCCi = i+1
       val term = (wScopeCi * wDepCi / dCCi) * Math.log((nCCi + 1) / (nCi + 1))
-      term
+      Math.exp(term)
     }}.sum
     score
   }
@@ -124,7 +124,7 @@ object BuildModel {
       val nCTi = cooccurTransactions.size
       val dCTi = i+1
       val term = (wScopeTi * wDepTi / dCTi) * Math.log((nCTi + 1) / (nTi + 1))
-      term
+      Math.exp(term)
     }}.sum
     score
   }
@@ -133,8 +133,12 @@ object BuildModel {
     val predictions = predictionPoints.map { case (_, pp) => {
       val changeContextScores = vocab.map(api => getChangeContextScore(pp, api, changeContextIndex))
       val codeContextScores = vocab.map(api => getCodeContextScore(pp, api, codeContextIndex))
-      val scores = (changeContextScores zip codeContextScores).map { case (scoreC, scoreT) => wc*scoreC + (1-wc)*scoreT }
-      val topK = (vocab zip scores).sortWith(_._2 > _._2).take(k)
+      // Normally want to compute score + rank by commented line below. But we return top 20 so we can
+      // explore optimal value of wc without recomputing this function again
+      // val scores = (changeContextScores zip codeContextScores).map { case (scoreC, scoreT) => wc*scoreC + (1-wc)*scoreT }
+      // val topK = (vocab zip scores).sortWith(_._2 > _._2).take(k)
+      val scores = (changeContextScores zip codeContextScores)
+      val topK = (vocab zip scores).sortWith((a, b) => (a._2._1 + a._2._2) > (a._2._1 + a._2._2)).take(20)
       (pp.methodName, topK)
     }}
     predictions
@@ -161,18 +165,24 @@ object BuildModel {
     val predictionPoints = getPredictionPoints(corpusPath)
     val predictions = getPredictions(predictionPoints, vocab, changeContextIndex, codeContextIndex, 0.5)
     println(s"Total predictions made: ${predictions.size}")
-    for ( (methodName, topK) <- predictions) {
-      println(methodName, topK.mkString(","))
-    }
+    val writer = new BufferedWriter(new FileWriter(s"${repoCorpus}/predictions.txt"))
+    predictions.foreach { case (goldMethodName, topK) => {
+      val candidatesStr = topK.map { case (api, scores) => {
+        val scoresStr = s"${scores._1},${scores._2}"
+        s"${api},${scoresStr}"
+      }}.mkString(",")
+      writer.write(goldMethodName + "," + candidatesStr + "\n")
+    }}
+    writer.close
 
     // Dump indexes to file for debugging later
-    val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
-    oos.writeObject(changeContextIndex)
-    oos.close
-
-    val oos2 = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/codeContextIndex"))
-    oos2.writeObject(codeContextIndex)
-    oos2.close
+    // val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
+    // oos.writeObject(changeContextIndex)
+    // oos.close
+    //
+    // val oos2 = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/codeContextIndex"))
+    // oos2.writeObject(codeContextIndex)
+    // oos2.close
 
     // To read, see https://alvinalexander.com/scala/how-to-use-serialization-in-scala-serializable-trait
   }
