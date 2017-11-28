@@ -12,8 +12,9 @@ import finesand.model.{Commit,PredictionPoint,Transaction}
 object BuildModel {
   type PredictionPointKey = (String, Int)
   type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
-
   type IndexMutableMap = collection.mutable.Map[(String, Int), List[(Int, Int)]]
+  type ChangeContextMap = collection.Map[(String, String, String),IndexMutableMap]
+  type CodeContextMap = collection.Map[String,IndexMutableMap]
 
   val schema = StructType(Array(
     StructField("change_type", DataTypes.StringType),
@@ -37,7 +38,7 @@ object BuildModel {
     m1
   }
 
-  def getChangeContextIndex(spark: SparkSession, corpusPath: String) = {
+  def getChangeContextIndexAndVocab(spark: SparkSession, corpusPath: String) = {
     val changeContextRawRDD = spark.read
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
@@ -47,7 +48,17 @@ object BuildModel {
 
     val changeContextRDD = changeContextRawRDD.map(r => ((r.getAs[String](0), r.getAs[String](1), r.getAs[String](2)), collection.mutable.Map(((r.getAs[String](3), r.getAs[Int](4)) -> List((r.getAs[Int](5), r.getAs[Int](6)))))))
       .reduceByKey((a, b) => plus(a, b))
-    changeContextRDD.collectAsMap
+
+    val changeContextIndex = changeContextRDD.collectAsMap
+
+    val vocabRDD = changeContextRawRDD.map(r => (r.getAs[String](0), r.getAs[String](1), r.getAs[String](2)))
+      .filter(t => t._1 == "INS" && t._2 == "MethodInvocation")
+      .map(t => t._3)
+      .distinct
+
+    val vocab = vocabRDD.collect
+
+    (changeContextIndex, vocab)
   }
 
   def getCodeContextIndex(spark: SparkSession, corpusPath: String) = {
@@ -86,6 +97,49 @@ object BuildModel {
     predictionPoints
   }
 
+  def getChangeContextScore(pp: PredictionPoint, candidate: String, changeContextIndex: ChangeContextMap) : Double = {
+    val scoreComps: List[PredictionPoint#ScoreComponent] = pp.changeContext.getOrElse(List()).sortWith(_._4 > _._4)
+    val score = scoreComps.zipWithIndex.map { case(c, i) => {
+      val (wScopeCi, wDepCi) = (c._2, c._3)
+      val transactions = changeContextIndex.getOrElse(c._1, Map())
+      val nCi = transactions.size
+      // co-occurrence transactions must be in same transaction and atomic change must come before prediction point
+      val cooccurTransactions = transactions.filter{ case (transKey, locs) => transKey == pp.key && locs.exists{ case (pos, parentPos) => pos < pp.pos } }
+      val nCCi = cooccurTransactions.size
+      val dCCi = i+1
+      val term = (wScopeCi * wDepCi / dCCi) * Math.log((nCCi + 1) / (nCi + 1))
+      term
+    }}.sum
+    score
+  }
+
+  def getCodeContextScore(pp: PredictionPoint, candidate: String, codeContextIndex: CodeContextMap) : Double = {
+    val scoreComps: List[PredictionPoint#ScoreComponent] = pp.codeContext.getOrElse(List()).sortWith(_._4 > _._4)
+    val score = scoreComps.zipWithIndex.map { case(c, i) => {
+      val (wScopeTi, wDepTi) = (c._2, c._3)
+      val transactions = codeContextIndex.getOrElse(c._1._3, Map())
+      val nTi = transactions.size
+      // co-occurrence transactions must be in same transaction and token must come before prediction point token
+      val cooccurTransactions = transactions.filter{ case (transKey, locs) => transKey == pp.key && locs.exists{ case (pos, parentPos) => pos < pp.pos } }
+      val nCTi = cooccurTransactions.size
+      val dCTi = i+1
+      val term (wScopeTi * wDepTi / dCTi) * Math.log((nCTi + 1) / (nTi + 1))
+      term
+    }}.sum
+    score
+  }
+
+  def getPredictions(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, wc: Double, k: Int = 5) = {
+    val predictions = predictionPoints.map { case (_, pp) => {
+      val changeContextScores = vocab.map(api => getChangeContextScore(pp, api, changeContextIndex))
+      val codeContextScores = vocab.map(api => getCodeContextScore(pp, api, codeContextIndex))
+      val scores = (changeContextScores zip codeContextScores).map { case (scoreC, scoreT) => wc*scoreC + (1-wc)*scoreT }
+      val topK = (vocab zip scores).sortWith(_._2 > _._2).take(k)
+      (pp.methodName, topK)
+    }}
+    predictions
+  }
+
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
     val repo = conf.repo()
@@ -102,9 +156,14 @@ object BuildModel {
     import spark.implicits._
 
     val corpusPath = s"${repo}-corpus"
-    val changeContextIndex = getChangeContextIndex(spark, corpusPath)
+    val (changeContextIndex, vocab) = getChangeContextIndexAndVocab(spark, corpusPath)
     val codeContextIndex = getCodeContextIndex(spark, corpusPath)
     val predictionPoints = getPredictionPoints(corpusPath)
+    val predictions = getPredictions(predictionPoints, vocab, changeContextIndex, codeContextIndex, 0.5)
+    println(s"Total predictions made: ${predictions.size}")
+    for ( (methodName, topK) <- predictions) {
+      println(methodName, topK.mkString(","))
+    }
 
     // Dump indexes to file for debugging later
     val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
