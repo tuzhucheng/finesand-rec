@@ -16,3 +16,4 @@ with open('repositories.json') as f:
             continue
         subprocess.call(['git', 'clone', repo['url']])
 
+    print('Total repositories:', len(repositories))

@@ -1,11 +1,203 @@
 {
     "repositories": [
         {
-            "url": "https://github.com/apache/kafka",
+            "url": "https://github.com/apache/kafka.git",
             "branch": "trunk"
         },
         {
-            "url": "https://github.com/apache/storm",
+            "url": "https://github.com/apache/storm.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/alibaba/dubbo.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/alibaba/fastjson.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/alibaba/druid.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/shuzheng/zheng.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/square/retrofit.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/square/okhttp.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/square/picasso.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/google/closure-compiler.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/google/ExoPlayer.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/google/truth.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/google/copybara.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/google/guava.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/google/error-prone.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/facebook/litho.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/facebook/buck.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/facebook/fresco.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/deeplearning4j/deeplearning4j.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/deeplearning4j/nd4j.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/beam.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/nifi.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/flink.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/drill.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/samza.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/bookkeeper.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/zeppelin.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/incubator-gobblin.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/geode.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/calcite.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/ctakes.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/zookeeper.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/roller.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/phoenix.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/accumulo.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/cordova-android.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/tika.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/incubator-tamaya.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/linkedin/ambry.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/linkedin/pinot.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/linkedin/WhereHows.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/linkedin/sensei.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/vmware/admiral.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/Microsoft/mssql-jdbc.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/thinkaurelius/titan.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/voldemort/voldemort.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/oracle/visualvm.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/yahoo/elide.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/Netflix/genie.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/Netflix/Hystrix.git",
             "branch": "master"
         }
     ]
