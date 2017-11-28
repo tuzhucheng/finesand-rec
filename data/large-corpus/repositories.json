@@ -117,7 +117,7 @@
             "branch": "master"
         },
         {
-            "url": "https://github.com/apache/calcite.git",
+            "url": "https://github.com/elastic/elasticsearch-hadoop.git",
             "branch": "master"
         },
         {
