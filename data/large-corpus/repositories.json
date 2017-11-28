@@ -1,0 +1,12 @@
+{
+    "repositories": [
+        {
+            "url": "https://github.com/apache/kafka",
+            "branch": "trunk"
+        },
+        {
+            "url": "https://github.com/apache/storm",
+            "branch": "master"
+        }
+    ]
+}
