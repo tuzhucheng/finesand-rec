@@ -123,7 +123,7 @@ object BuildModel {
       val cooccurTransactions = transactions.filter{ case (transKey, locs) => transKey == pp.key && locs.exists{ case (pos, parentPos) => pos < pp.pos } }
       val nCTi = cooccurTransactions.size
       val dCTi = i+1
-      val term (wScopeTi * wDepTi / dCTi) * Math.log((nCTi + 1) / (nTi + 1))
+      val term = (wScopeTi * wDepTi / dCTi) * Math.log((nCTi + 1) / (nTi + 1))
       term
     }}.sum
     score
