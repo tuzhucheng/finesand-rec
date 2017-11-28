@@ -174,7 +174,7 @@
         },
         {
             "url": "https://github.com/Microsoft/mssql-jdbc.git",
-            "branch": "master"
+            "branch": "dev"
         },
         {
             "url": "https://github.com/thinkaurelius/titan.git",
