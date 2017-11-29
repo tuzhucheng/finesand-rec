@@ -104,12 +104,14 @@ object BuildModel {
 
   def getChangeContextScore(pp: PredictionPoint, candidate: String, changeContextIndex: ChangeContextMap, window: Int = 15) : Double = {
     val scoreComps: List[PredictionPoint#ScoreComponent] = pp.changeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
+    val candChangeContext = changeContextIndex.getOrElse(("INS", "MethodInvocation", candidate), collection.mutable.Map[(String, Int), List[(Int, Int)]]())
+    val candChangeContextKeys = candChangeContext.keys.toSet
     val score = scoreComps.zipWithIndex.map { case(c, i) => {
       val (wScopeCi, wDepCi) = (c._2, c._3)
       val transactions = changeContextIndex.getOrElse(c._1, Map())
       val nCi = transactions.size
       // co-occurrence transactions must be in same transaction and atomic change must come before prediction point
-      val cooccurTransactions = transactions.filter{ case (transKey, locs) => transKey == pp.key && locs.exists{ case (pos, parentPos) => pos < pp.pos } }
+      val cooccurTransactions = transactions.filter{ case (transKey, locs) => candChangeContextKeys.contains(transKey) }
       val nCCi = cooccurTransactions.size
       val dCCi = i+1
       val term = (wScopeCi * wDepCi / dCCi) * Math.log((nCCi + 1) / (nCi + 1))
@@ -120,12 +122,14 @@ object BuildModel {
 
   def getCodeContextScore(pp: PredictionPoint, candidate: String, codeContextIndex: CodeContextMap, window: Int = 15) : Double = {
     val scoreComps: List[PredictionPoint#ScoreComponent] = pp.codeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
+    val candCodeContext = codeContextIndex.getOrElse(candidate, collection.mutable.Map[(String, Int), List[(Int, Int)]]())
+    val candCodeContextKeys = candCodeContext.keys.toSet
     val score = scoreComps.zipWithIndex.map { case(c, i) => {
       val (wScopeTi, wDepTi) = (c._2, c._3)
-      val transactions = codeContextIndex.getOrElse(c._1._3, Map())
+      val transactions = codeContextIndex.getOrElse(c._1._3, collection.mutable.Map[(String, Int), List[(Int, Int)]]())
       val nTi = transactions.size
       // co-occurrence transactions must be in same transaction and token must come before prediction point token
-      val cooccurTransactions = transactions.filter{ case (transKey, locs) => transKey == pp.key && locs.exists{ case (pos, parentPos) => pos < pp.pos } }
+      val cooccurTransactions = transactions.filter{ case (transKey, locs) => candCodeContextKeys.contains(transKey) }
       val nCTi = cooccurTransactions.size
       val dCTi = i+1
       val term = (wScopeTi * wDepTi / dCTi) * Math.log((nCTi + 1) / (nTi + 1))
