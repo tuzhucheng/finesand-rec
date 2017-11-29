@@ -178,7 +178,7 @@
         },
         {
             "url": "https://github.com/thinkaurelius/titan.git",
-            "branch": "master"
+            "branch": "titan10"
         },
         {
             "url": "https://github.com/voldemort/voldemort.git",
