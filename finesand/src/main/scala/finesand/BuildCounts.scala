@@ -105,10 +105,10 @@ object BuildCounts {
     actions
   }
 
-  def generateChangeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType, dataset: String): Unit = {
+  def generateChangeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType, language: String, dataset: String): Unit = {
     val partialChangeContextIndex = commits.flatMap(c => {
       c.transactions
-        .filter(t => t.path.endsWith(".java"))
+        .filter(t => t.path.endsWith(s".$language"))
         .zipWithIndex.flatMap{ case (t, i) => {
           val nameParts = t.path.split("/")
           val oldFilePath = (nameParts.init :+ ("old_" + nameParts.last)).mkString("/")
@@ -186,16 +186,17 @@ object BuildCounts {
           codeContext += scoreComponent
         }
       }}
+      pp.codeContext = Some(codeContext.toList)
       predictionPoints((commit.commitId, transactionIdx)) = pp
     }
 
     tokens
   }
 
-  def generateCodeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType, dataset: String): Unit = {
+  def generateCodeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType, language: String, dataset: String): Unit = {
     val partialCodeContextIndex = commits.flatMap(c => {
       c.transactions
-        .filter(t => t.path.endsWith(".java"))
+        .filter(t => t.path.endsWith(s".$language"))
         .zipWithIndex.flatMap{ case (t, i) => {
           val newFile = s"${repoCorpus}/${c.commitId}/${t.path}"
           val dstTree = Generators.getInstance().getTree(newFile)
@@ -220,6 +221,7 @@ object BuildCounts {
     val conf = new Conf(args)
     val repo = conf.repo()
     val group = conf.group()
+    val lang = conf.lang()
     val repoCorpus = s"${repo}-corpus"
 
     Seq(Train, Test).foreach { s => {
@@ -228,8 +230,8 @@ object BuildCounts {
 
       Run.initGenerators()
       commits.grouped(group).zipWithIndex.foreach { case (commitsGroup, partNum) => {
-        generateChangeContext(commitsGroup, repoCorpus, partNum, predictionPoints, s)
-        generateCodeContext(commitsGroup, repoCorpus, partNum, predictionPoints, s)
+        generateChangeContext(commitsGroup, repoCorpus, partNum, predictionPoints, lang, s)
+        generateCodeContext(commitsGroup, repoCorpus, partNum, predictionPoints, lang, s)
 
         if (!predictionPoints.isEmpty) {
           val testIndicator = if (s == Test) "Test" else ""
