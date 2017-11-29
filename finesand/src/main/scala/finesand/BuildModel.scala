@@ -60,8 +60,14 @@ object BuildModel {
       .distinct
 
     val vocab = vocabRDD.collect
+    val pattern = "[a-zA-Z0-9_]*".r.pattern
+    val validVocab = vocab.filter{x => try {
+      pattern.matcher(x).matches
+    } catch {
+      case foo: NullPointerException => false }
+    }
 
-    (changeContextIndex, vocab)
+    (changeContextIndex, validVocab)
   }
 
   def getCodeContextIndex(spark: SparkSession, corpusPath: String, dataset: String) = {
