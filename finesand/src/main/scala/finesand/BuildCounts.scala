@@ -186,6 +186,7 @@ object BuildCounts {
           codeContext += scoreComponent
         }
       }}
+      pp.codeContext = Some(codeContext.toList)
       predictionPoints((commit.commitId, transactionIdx)) = pp
     }
 
