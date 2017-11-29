@@ -22,12 +22,15 @@ object BuildCounts {
   type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
   val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
 
-  def getCommits(corpusDir: String): Seq[Commit] = {
+  def getCommits(corpusDir: String, dataset: String): Seq[Commit] = {
     val dir = new File(corpusDir)
     if (!dir.exists || !dir.isDirectory)
       Seq[Commit]()
 
-    val commitDirs: Seq[File] = dir.listFiles.toSeq.filter(f => f.isDirectory)
+    val bufferedSource = Source.fromFile(s"${corpusDir}/${dataset}_commits.txt")
+    val commitHashes = (for (line <- bufferedSource.getLines()) yield line).toSeq
+
+    val commitDirs: Seq[File] = commitHashes.map(h => new File(s"${corpusDir}/${h}"))
     val commits = commitDirs.map(d => {
       val commitHash = d.getName
       val transactionsFile = new File(d, "finesand_transactions.txt")
@@ -210,7 +213,7 @@ object BuildCounts {
     val repo = conf.repo()
     val group = conf.group()
     val repoCorpus = s"${repo}-corpus"
-    val commits = getCommits(repoCorpus)
+    val commits = getCommits(repoCorpus, "train")
     var predictionPoints: PredictionPointMapType = collection.mutable.Map()
 
     Run.initGenerators()
