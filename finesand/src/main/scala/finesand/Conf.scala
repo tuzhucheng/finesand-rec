@@ -7,5 +7,6 @@ class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
   val branch = opt[String]()
   val group = opt[Int]()
   val split = opt[Double]()
+  val lang = opt[String](default = Some("java"))
   verify()
 }
