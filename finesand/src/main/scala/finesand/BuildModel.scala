@@ -15,6 +15,8 @@ object BuildModel {
   type IndexMutableMap = collection.mutable.Map[(String, Int), List[(Int, Int)]]
   type ChangeContextMap = collection.Map[(String, String, String),IndexMutableMap]
   type CodeContextMap = collection.Map[String,IndexMutableMap]
+  val Train = "train"
+  val Test = "test"
 
   val schema = StructType(Array(
     StructField("change_type", DataTypes.StringType),
@@ -38,12 +40,13 @@ object BuildModel {
     m1
   }
 
-  def getChangeContextIndexAndVocab(spark: SparkSession, corpusPath: String) = {
+  def getChangeContextIndexAndVocab(spark: SparkSession, corpusPath: String, dataset: String) = {
+    val partFilePattern = if (dataset == Train) "change_context_part_*.txt" else "change_context_test_part_*.txt"
     val changeContextRawRDD = spark.read
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
       .schema(schema)
-      .csv(s"${corpusPath}/change_context_*.txt")
+      .csv(s"${corpusPath}/${partFilePattern}")
       .rdd
 
     val changeContextRDD = changeContextRawRDD.map(r => ((r.getAs[String](0), r.getAs[String](1), r.getAs[String](2)), collection.mutable.Map(((r.getAs[String](3), r.getAs[Int](4)) -> List((r.getAs[Int](5), r.getAs[Int](6)))))))
@@ -61,12 +64,13 @@ object BuildModel {
     (changeContextIndex, vocab)
   }
 
-  def getCodeContextIndex(spark: SparkSession, corpusPath: String) = {
+  def getCodeContextIndex(spark: SparkSession, corpusPath: String, dataset: String) = {
+    val partFilePattern = if (dataset == Train) "code_context_part_*.txt" else "code_context_test_part*.txt"
     val codeContextRawRDD = spark.read
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
       .schema(schema)
-      .csv(s"${corpusPath}/code_context_*.txt")
+      .csv(s"${corpusPath}/${partFilePattern}")
       .rdd
 
     val codeContextRDD = codeContextRawRDD.map(r => (r.getAs[String](2), collection.mutable.Map(((r.getAs[String](3), r.getAs[Int](4)) -> List((r.getAs[Int](5), r.getAs[Int](6)))))))
@@ -80,8 +84,9 @@ object BuildModel {
     codeContextRDD.collectAsMap
   }
 
-  def getPredictionPoints(repoCorpus: String) = {
-    val serializedPredictionFiles = new File(repoCorpus).listFiles.filter(f => f.getName contains "predictionPointsPart").map(f => f.getCanonicalPath)
+  def getPredictionPoints(repoCorpus: String, dataset: String) = {
+    val partFilePattern = if (dataset == Train) "predictionPointsPart" else "predictionPointsTestPart"
+    val serializedPredictionFiles = new File(repoCorpus).listFiles.filter(f => f.getName contains partFilePattern).map(f => f.getCanonicalPath)
     var predictionPoints: PredictionPointMapType = collection.mutable.Map()
     serializedPredictionFiles.foreach(f => {
       val ois = new ObjectInputStream(new FileInputStream(f)) {
@@ -144,6 +149,11 @@ object BuildModel {
     predictions
   }
 
+  def findOptimalWc(trainPredictions: scala.collection.mutable.Map[String, Array[(String, (Double, Double))]]) = {
+    // TODO
+    0.5
+  }
+
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
     val repo = conf.repo()
@@ -160,13 +170,15 @@ object BuildModel {
     import spark.implicits._
 
     val corpusPath = s"${repo}-corpus"
-    val (changeContextIndex, vocab) = getChangeContextIndexAndVocab(spark, corpusPath)
-    val codeContextIndex = getCodeContextIndex(spark, corpusPath)
-    val predictionPoints = getPredictionPoints(corpusPath)
-    val predictions = getPredictions(predictionPoints, vocab, changeContextIndex, codeContextIndex, 0.5)
-    println(s"Total predictions made: ${predictions.size}")
-    val writer = new BufferedWriter(new FileWriter(s"${repoCorpus}/predictions.txt"))
-    predictions.foreach { case (goldMethodName, topK) => {
+
+    val (trainChangeContextIndex, trainVocab) = getChangeContextIndexAndVocab(spark, corpusPath, Train)
+    val trainCodeContextIndex = getCodeContextIndex(spark, corpusPath, Train)
+    val trainPredictionPoints = getPredictionPoints(corpusPath, Train)
+    val trainPredictions = getPredictions(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, 0.5)
+
+    println(s"Total train predictions: ${trainPredictions.size}")
+    val writer = new BufferedWriter(new FileWriter(s"${repoCorpus}/train_predictions.txt"))
+    trainPredictions.foreach { case (goldMethodName, topK) => {
       val candidatesStr = topK.map { case (api, scores) => {
         val scoresStr = s"${scores._1},${scores._2}"
         s"${api},${scoresStr}"
@@ -174,6 +186,8 @@ object BuildModel {
       writer.write(goldMethodName + "," + candidatesStr + "\n")
     }}
     writer.close
+
+    val optimalWc = findOptimalWc(trainPredictions)
 
     // Dump indexes to file for debugging later
     // val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
