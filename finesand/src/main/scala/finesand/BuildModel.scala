@@ -102,8 +102,8 @@ object BuildModel {
     predictionPoints
   }
 
-  def getChangeContextScore(pp: PredictionPoint, candidate: String, changeContextIndex: ChangeContextMap) : Double = {
-    val scoreComps: List[PredictionPoint#ScoreComponent] = pp.changeContext.getOrElse(List()).sortWith(_._4 > _._4)
+  def getChangeContextScore(pp: PredictionPoint, candidate: String, changeContextIndex: ChangeContextMap, window: Int = 15) : Double = {
+    val scoreComps: List[PredictionPoint#ScoreComponent] = pp.changeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
     val score = scoreComps.zipWithIndex.map { case(c, i) => {
       val (wScopeCi, wDepCi) = (c._2, c._3)
       val transactions = changeContextIndex.getOrElse(c._1, Map())
@@ -118,8 +118,8 @@ object BuildModel {
     score
   }
 
-  def getCodeContextScore(pp: PredictionPoint, candidate: String, codeContextIndex: CodeContextMap) : Double = {
-    val scoreComps: List[PredictionPoint#ScoreComponent] = pp.codeContext.getOrElse(List()).sortWith(_._4 > _._4)
+  def getCodeContextScore(pp: PredictionPoint, candidate: String, codeContextIndex: CodeContextMap, window: Int = 15) : Double = {
+    val scoreComps: List[PredictionPoint#ScoreComponent] = pp.codeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
     val score = scoreComps.zipWithIndex.map { case(c, i) => {
       val (wScopeTi, wDepTi) = (c._2, c._3)
       val transactions = codeContextIndex.getOrElse(c._1._3, Map())
