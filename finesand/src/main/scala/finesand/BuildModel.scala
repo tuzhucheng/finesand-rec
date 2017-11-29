@@ -157,6 +157,28 @@ object BuildModel {
     aggregated
   }
 
+  implicit def bool2int(b:Boolean) = if (b) 1 else 0
+
+  // Get top-1,2,3,4,5,10 accuracy
+  def getAccuracy(predictions: scala.collection.mutable.Map[String, Array[(String, Double)]], vocab: Array[String]) = {
+    val ks = List(1, 2, 3, 4, 5, 10)
+    val oovAcc = predictions.map { case (goldMethodName, topK) => {
+      ks.map(k => if (topK.toStream.take(k).contains(goldMethodName)) 1 else 0)
+    }}
+    val oovHits = oovAcc.transpose.map(l => l.reduce(_ + _))
+    val oovTotal = List.fill(6)(oovAcc.size)
+    val oovFinal = oovHits.zip(oovTotal).map(t => t._1 / t._2).toList
+
+    val inAcc = predictions.filter(kv => vocab.contains(kv._1)).map { case (goldMethodName, topK) => {
+      ks.map(k => if (topK.toStream.take(k).contains(goldMethodName)) 1 else 0)
+    }}
+    val inHits = oovAcc.transpose.map(l => l.reduce(_ + _))
+    val inTotal = List.fill(6)(inHits.size)
+    val inFinal = oovHits.zip(inTotal).map(t => t._1 / t._2).toList
+
+    ks.zipWithIndex.map{ case (k, i) => k -> Map("oov" -> oovFinal(i), "in" -> inFinal(i)) }
+  }
+
   def findOptimalWc(trainPredictions: scala.collection.mutable.Map[String, Array[(String, (Double, Double))]]) = {
     // TODO
     0.5
@@ -183,6 +205,14 @@ object BuildModel {
     val trainCodeContextIndex = getCodeContextIndex(spark, corpusPath, Train)
     val trainPredictionPoints = getPredictionPoints(corpusPath, Train)
     val trainPredictions = getPredictions(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, 0.5)
+    List(0, 0.25, 0.5, 0.75, 1).map( wc => {
+      val trainPredictionsCombined = aggregateScoreAndTakeTop(trainPredictions, wc, 20)
+      val accuracyMap = getAccuracy(trainPredictionsCombined, trainVocab)
+      println(s"wc: $wc")
+      accuracyMap.foreach { case (k, m) => {
+        println(s"top-$k: oov ${m("oov")}, in ${m("in")}")
+      }}
+    })
 
     println(s"Total train predictions: ${trainPredictions.size}")
     val writer = new BufferedWriter(new FileWriter(s"${repoCorpus}/train_predictions.txt"))
@@ -198,13 +228,13 @@ object BuildModel {
     val optimalWc = findOptimalWc(trainPredictions)
 
     // Dump indexes to file for debugging later
-    // val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
-    // oos.writeObject(changeContextIndex)
-    // oos.close
-    //
-    // val oos2 = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/codeContextIndex"))
-    // oos2.writeObject(codeContextIndex)
-    // oos2.close
+     //val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
+     //oos.writeObject(trainChangeContextIndex)
+     //oos.close
+
+     //val oos2 = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/codeContextIndex"))
+     //oos2.writeObject(trainCodeContextIndex)
+     //oos2.close
 
     // To read, see https://alvinalexander.com/scala/how-to-use-serialization-in-scala-serializable-trait
   }
