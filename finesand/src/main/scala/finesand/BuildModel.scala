@@ -149,6 +149,14 @@ object BuildModel {
     predictions
   }
 
+  def aggregateScoreAndTakeTop(predictions: scala.collection.mutable.Map[String, Array[(String, (Double, Double))]], wc: Double, top: Int) = {
+    val aggregated = predictions.map { case (goldMethodName, topK) => {
+      val aggregatedList = topK.map { case (api, scores) => (api, wc*scores._1 + (1-wc)*scores._2)}
+      goldMethodName -> aggregatedList.sortWith(_._2 > _._2).take(top)
+    }}
+    aggregated
+  }
+
   def findOptimalWc(trainPredictions: scala.collection.mutable.Map[String, Array[(String, (Double, Double))]]) = {
     // TODO
     0.5
