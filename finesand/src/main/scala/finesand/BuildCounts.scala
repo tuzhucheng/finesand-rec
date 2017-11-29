@@ -21,6 +21,8 @@ object BuildCounts {
   type PredictionPointKey = (String, Int)
   type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
   val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
+  val Train = "train"
+  val Test = "test"
 
   def getCommits(corpusDir: String, dataset: String): Seq[Commit] = {
     val dir = new File(corpusDir)
@@ -103,7 +105,7 @@ object BuildCounts {
     actions
   }
 
-  def generateChangeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType): Unit = {
+  def generateChangeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType, dataset: String): Unit = {
     val partialChangeContextIndex = commits.flatMap(c => {
       c.transactions
         .filter(t => t.path.endsWith(".java"))
@@ -120,12 +122,15 @@ object BuildCounts {
         }}
     })
 
-    val partialChangeContextFile = s"${repoCorpus}/change_context_part_${group}.txt"
-    val writer = new BufferedWriter(new FileWriter(partialChangeContextFile))
-    partialChangeContextIndex.foreach(c => {
-      writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
-    })
-    writer.close
+    if (!partialChangeContextIndex.isEmpty) {
+      val testIndicator = if (dataset == Test) "test_" else ""
+      val partialChangeContextFile = s"${repoCorpus}/change_context_${testIndicator}part_${group}.txt"
+      val writer = new BufferedWriter(new FileWriter(partialChangeContextFile))
+      partialChangeContextIndex.foreach(c => {
+        writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
+      })
+      writer.close
+    }
   }
 
   def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType) = {
@@ -187,7 +192,7 @@ object BuildCounts {
     tokens
   }
 
-  def generateCodeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType): Unit = {
+  def generateCodeContext(commits: Seq[Commit], repoCorpus: String, group: Int, predictionPoints: PredictionPointMapType, dataset: String): Unit = {
     val partialCodeContextIndex = commits.flatMap(c => {
       c.transactions
         .filter(t => t.path.endsWith(".java"))
@@ -200,12 +205,15 @@ object BuildCounts {
         }}
     })
 
-    val partialCodeContextFile = s"${repoCorpus}/code_context_part_${group}.txt"
-    val writer = new BufferedWriter(new FileWriter(partialCodeContextFile))
-    partialCodeContextIndex.foreach(c => {
-      writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
-    })
-    writer.close
+    if (!partialCodeContextIndex.isEmpty) {
+      val testIndicator = if (dataset == Test) "test_" else ""
+      val partialCodeContextFile = s"${repoCorpus}/code_context_${testIndicator}part_${group}.txt"
+      val writer = new BufferedWriter(new FileWriter(partialCodeContextFile))
+      partialCodeContextIndex.foreach(c => {
+        writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
+      })
+      writer.close
+    }
   }
 
   def main(args: Array[String]): Unit = {
@@ -213,20 +221,26 @@ object BuildCounts {
     val repo = conf.repo()
     val group = conf.group()
     val repoCorpus = s"${repo}-corpus"
-    val commits = getCommits(repoCorpus, "train")
-    var predictionPoints: PredictionPointMapType = collection.mutable.Map()
 
-    Run.initGenerators()
-    commits.grouped(group).zipWithIndex.foreach { case (commitsGroup, partNum) => {
-      generateChangeContext(commitsGroup, repoCorpus, partNum, predictionPoints)
-      generateCodeContext(commitsGroup, repoCorpus, partNum, predictionPoints)
+    Seq(Train, Test).foreach { s => {
+      val commits = getCommits(repoCorpus, s)
+      var predictionPoints: PredictionPointMapType = collection.mutable.Map()
 
-      val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/predictionPointsPart${partNum}"))
-      oos.writeObject(predictionPoints)
-      oos.close
-      predictionPoints.clear
+      Run.initGenerators()
+      commits.grouped(group).zipWithIndex.foreach { case (commitsGroup, partNum) => {
+        generateChangeContext(commitsGroup, repoCorpus, partNum, predictionPoints, s)
+        generateCodeContext(commitsGroup, repoCorpus, partNum, predictionPoints, s)
 
-      println(s"Processed ${(partNum + 1) * group} / ${commits.length} commits")
+        if (!predictionPoints.isEmpty) {
+          val testIndicator = if (s == Test) "Test" else ""
+          val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/predictionPoints${testIndicator}Part${partNum}"))
+          oos.writeObject(predictionPoints)
+          oos.close
+          predictionPoints.clear
+        }
+
+        println(s"Processed ${(partNum + 1) * group} / ${commits.length} commits")
+      }}
     }}
   }
 }
