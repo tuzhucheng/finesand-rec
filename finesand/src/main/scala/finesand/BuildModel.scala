@@ -2,10 +2,12 @@ package finesand
 
 import java.io.{BufferedWriter,File,FileInputStream,FileOutputStream,FileWriter,ObjectInputStream,ObjectOutputStream}
 
+import com.typesafe.scalalogging.Logger
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
 import org.rogach.scallop._
+import org.slf4j.LoggerFactory
 
 import finesand.model.{Commit,PredictionPoint,Transaction}
 
@@ -195,6 +197,7 @@ object BuildModel {
   }
 
   def main(args: Array[String]): Unit = {
+    val logger = Logger("BuildModel")
     val conf = new Conf(args)
     val repo = conf.repo()
     val repoCorpus = s"${repo}-corpus"
@@ -206,14 +209,16 @@ object BuildModel {
       .config("spark.master", "local")
       .getOrCreate()
 
-    spark.sparkContext.setLogLevel("WARN")
     import spark.implicits._
 
-    val corpusPath = s"${repo}-corpus"
+    logger.info("Getting change context index and vocab...")
+    var t0 = System.nanoTime
+    val (trainChangeContextIndex, trainVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Train)
+    var t1 = System.nanoTime
+    logger.info("Finished getting change context index and vocab. Took {}", t1 - t0)
 
-    val (trainChangeContextIndex, trainVocab) = getChangeContextIndexAndVocab(spark, corpusPath, Train)
-    val trainCodeContextIndex = getCodeContextIndex(spark, corpusPath, Train)
-    val trainPredictionPoints = getPredictionPoints(corpusPath, Train)
+    val trainCodeContextIndex = getCodeContextIndex(spark, repoCorpus, Train)
+    val trainPredictionPoints = getPredictionPoints(repoCorpus, Train)
     val trainPredictions = getPredictions(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, 0.5)
     List(0, 0.25, 0.5, 0.75, 1).map( wc => {
       val trainPredictionsCombined = aggregateScoreAndTakeTop(trainPredictions, wc, 20)
