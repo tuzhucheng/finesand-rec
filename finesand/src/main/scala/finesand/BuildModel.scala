@@ -211,22 +211,38 @@ object BuildModel {
 
     import spark.implicits._
 
-    logger.info("Getting change context index and vocab...")
+    // Using println() instead of logging to distinguish from Spark logging
+    println("Getting change context index and vocab...")
     var t0 = System.nanoTime
     val (trainChangeContextIndex, trainVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Train)
     var t1 = System.nanoTime
-    logger.info("Finished getting change context index and vocab. Took {}", t1 - t0)
+    println(s"Finished getting change context index and vocab. Took ${(t1 - t0) / 1000000000} seconds.")
 
+    println("Getting code context index and vocab...")
+    t0 = System.nanoTime
     val trainCodeContextIndex = getCodeContextIndex(spark, repoCorpus, Train)
+    t1 = System.nanoTime
+    println(s"Finished getting code context index and vocab. Took ${(t1 - t0) / 1000000000} seconds.")
+
+    println("Getting prediction points...")
+    t0 = System.nanoTime
     val trainPredictionPoints = getPredictionPoints(repoCorpus, Train)
+    t1 = System.nanoTime
+    println(s"Finished getting prediction points. Took ${(t1 - t0) / 1000000000} seconds.")
+
+    println("Getting training predictions...")
     val trainPredictions = getPredictions(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, 0.5)
     List(0, 0.25, 0.5, 0.75, 1).map( wc => {
+      println(s"Getting training predictions using combined score for wc = ${wc}...")
+      t0 = System.nanoTime
       val trainPredictionsCombined = aggregateScoreAndTakeTop(trainPredictions, wc, 20)
       val accuracyMap = getAccuracy(trainPredictionsCombined, trainVocab)
       println(s"wc: $wc")
       accuracyMap.foreach { case (k, m) => {
         println(s"top-$k: oov ${m("oov")}, in ${m("in")}")
       }}
+      t1 = System.nanoTime
+      println(s"Evaluating accuracy for wc = ${wc} took ${(t1 - t0) / 1000000000} seconds...")
     })
 
     println(s"Total train predictions: ${trainPredictions.size}")
