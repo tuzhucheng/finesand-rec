@@ -147,7 +147,7 @@ object BuildModel {
   }
 
   def getPredictions(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, wc: Double, k: Int = 5) = {
-    val predictions = predictionPoints.map { case (_, pp) => {
+    val predictions = predictionPoints.par.map { case (_, pp) => {
       val changeContextScores = vocab.map(api => getChangeContextScore(pp, api, changeContextIndex))
       val codeContextScores = vocab.map(api => getCodeContextScore(pp, api, codeContextIndex))
       // Normally want to compute score + rank by commented line below. But we return top 20 so we can
@@ -158,7 +158,7 @@ object BuildModel {
       val topK = (vocab zip scores).sortWith((a, b) => (a._2._1 + a._2._2) > (a._2._1 + a._2._2)).take(20)
       (pp.methodName, topK)
     }}
-    predictions
+    predictions.seq
   }
 
   def aggregateScoreAndTakeTop(predictions: scala.collection.mutable.Map[String, Array[(String, (Double, Double))]], wc: Double, top: Int) = {
