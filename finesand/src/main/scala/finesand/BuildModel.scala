@@ -146,16 +146,14 @@ object BuildModel {
     score
   }
 
-  def getPredictions(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, wc: Double, k: Int = 5) = {
+  def getPredictions(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, wc: Double, k: Int = 10) = {
     val predictions = predictionPoints.par.map { case (_, pp) => {
       val changeContextScores = vocab.map(api => getChangeContextScore(pp, api, changeContextIndex))
       val codeContextScores = vocab.map(api => getCodeContextScore(pp, api, codeContextIndex))
-      // Normally want to compute score + rank by commented line below. But we return top 20 so we can
-      // explore optimal value of wc without recomputing this function again
-      // val scores = (changeContextScores zip codeContextScores).map { case (scoreC, scoreT) => wc*scoreC + (1-wc)*scoreT }
-      // val topK = (vocab zip scores).sortWith(_._2 > _._2).take(k)
-      val scores = (changeContextScores zip codeContextScores)
-      val topK = (vocab zip scores).sortWith((a, b) => (a._2._1 + a._2._2) > (a._2._1 + a._2._2)).take(20)
+      val scores = (changeContextScores zip codeContextScores).map { case (scoreC, scoreT) => wc*scoreC + (1-wc)*scoreT }
+      val topK = (vocab zip scores).sortWith(_._2 > _._2).take(k)
+      // val scores = (changeContextScores zip codeContextScores)
+      // val topK = (vocab zip scores).sortWith((a, b) => (a._2._1 + a._2._2) > (a._2._1 + a._2._2)).take(20)
       (pp.methodName, topK)
     }}
     predictions.seq
@@ -231,32 +229,30 @@ object BuildModel {
     println(s"Finished getting prediction points. Took ${(t1 - t0) / 1000000000} seconds.")
 
     println("Getting training predictions...")
-    val trainPredictions = getPredictions(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, 0.5)
+    println(s"Total train predictions: ${trainPredictionPoints.size}")
     List(0, 0.25, 0.5, 0.75, 1).map( wc => {
       println(s"Getting training predictions using combined score for wc = ${wc}...")
       t0 = System.nanoTime
-      val trainPredictionsCombined = aggregateScoreAndTakeTop(trainPredictions, wc, 20)
-      val accuracyMap = getAccuracy(trainPredictionsCombined, trainVocab)
+      val trainPredictions = getPredictions(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, wc)
+      val accuracyMap = getAccuracy(trainPredictions, trainVocab)
       println(s"wc: $wc")
       accuracyMap.foreach { case (k, m) => {
         println(s"top-$k: oov ${m("oov")}, in ${m("in")}")
       }}
       t1 = System.nanoTime
       println(s"Evaluating accuracy for wc = ${wc} took ${(t1 - t0) / 1000000000} seconds...")
+
+      val writer = new BufferedWriter(new FileWriter(s"${repoCorpus}/train_predictions_wc_$wc.txt"))
+      trainPredictions.foreach { case (goldMethodName, topK) => {
+        val candidatesStr = topK.map { case (api, score) => {
+          s"${api},${score}"
+        }}.mkString(",")
+        writer.write(goldMethodName + "," + candidatesStr + "\n")
+      }}
+      writer.close
     })
 
-    println(s"Total train predictions: ${trainPredictions.size}")
-    val writer = new BufferedWriter(new FileWriter(s"${repoCorpus}/train_predictions.txt"))
-    trainPredictions.foreach { case (goldMethodName, topK) => {
-      val candidatesStr = topK.map { case (api, scores) => {
-        val scoresStr = s"${scores._1},${scores._2}"
-        s"${api},${scoresStr}"
-      }}.mkString(",")
-      writer.write(goldMethodName + "," + candidatesStr + "\n")
-    }}
-    writer.close
-
-    val optimalWc = findOptimalWc(trainPredictions)
+    //val optimalWc = findOptimalWc(trainPredictions)
 
     // Dump indexes to file for debugging later
      //val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
