@@ -2,6 +2,7 @@ package finesand
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
+import scala.collection.parallel.immutable.ParVector
 import scala.io.Source
 import sys.process._
 import java.io.{BufferedWriter,File,FileWriter,FileOutputStream,ObjectOutputStream}
@@ -14,10 +15,19 @@ import com.github.gumtreediff.io.TreeIoUtils
 import com.github.gumtreediff.matchers.Matcher
 import com.github.gumtreediff.matchers.Matchers
 import com.github.gumtreediff.tree.{ITree,TreeContext}
+import org.rogach.scallop._
 
 import finesand.model.{Commit,PredictionPoint,Transaction}
 
 object BuildCounts {
+
+  class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
+    val repo = opt[String]() // "../data/community-corpus/log4j"
+    val group = opt[Int](default = Some(1000), descr = "number of commits to group output files by")
+    val lang = opt[String](default = Some("java"))
+    verify()
+  }
+
   type PredictionPointKey = (String, Int)
   type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
   val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
@@ -219,17 +229,17 @@ object BuildCounts {
 
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
-    val repo = conf.repo()
+    val repo = conf.repo().stripSuffix("/")
     val group = conf.group()
     val lang = conf.lang()
     val repoCorpus = s"${repo}-corpus"
 
     Seq(Train, Test).foreach { s => {
       val commits = getCommits(repoCorpus, s)
-      var predictionPoints: PredictionPointMapType = collection.mutable.Map()
 
       Run.initGenerators()
-      commits.grouped(group).zipWithIndex.foreach { case (commitsGroup, partNum) => {
+      commits.grouped(group).to[ParVector].zipWithIndex.foreach { case (commitsGroup, partNum) => {
+        val predictionPoints: PredictionPointMapType = collection.mutable.Map()
         generateChangeContext(commitsGroup, repoCorpus, partNum, predictionPoints, lang, s)
         generateCodeContext(commitsGroup, repoCorpus, partNum, predictionPoints, lang, s)
 
@@ -238,10 +248,11 @@ object BuildCounts {
           val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/predictionPoints${testIndicator}Part${partNum}"))
           oos.writeObject(predictionPoints)
           oos.close
-          predictionPoints.clear
         }
 
-        println(s"Processed ${(partNum + 1) * group} / ${commits.length} commits")
+        val from = partNum * group
+        val to = Math.min(commits.length, (partNum + 1) * group)
+        println(s"Processed commits ${from}-${to} out of ${commits.length}")
       }}
     }}
   }
