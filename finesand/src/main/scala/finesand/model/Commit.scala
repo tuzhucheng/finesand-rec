@@ -14,12 +14,14 @@ class Commit(val commitId: String, val parent: Option[String], val transactions:
 
 @SerialVersionUID(100L)
 class PredictionPoint(val commitId: String, val transactionIdx: Int, val variableName: String, val methodName: String, val pos: Int, val parentPos: Int) extends Serializable {
-  type Change = (String, String, String) // operation kind, node type, label
-  type ScoreComponent = (Change, Double, Double, Int) // change, scope weight, dep weight, position
+  type ChangeContextKey = (String, String, String) // operation kind, node type, label
+  type CodeContextKey = (String, String) // node type, label
+  type ChangeContextScoreComponent = (ChangeContextKey, Double, Double, Int) // change context key, scope weight, dep weight, position
+  type CodeContextScoreComponent = (CodeContextKey, Double, Double, Int) // code context key, scope weight, dep weight, position
 
   val key = (commitId, transactionIdx)
-  var changeContext: Option[List[ScoreComponent]] = None
-  var codeContext: Option[List[ScoreComponent]] = None
+  var changeContext: Option[List[ChangeContextScoreComponent]] = None
+  var codeContext: Option[List[CodeContextScoreComponent]] = None
 
   override def toString(): String = {
     val sb = new StringBuilder()

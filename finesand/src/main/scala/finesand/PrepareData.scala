@@ -4,9 +4,19 @@ import sys.process._
 import java.io.{BufferedWriter,File,FileWriter}
 import java.util.concurrent.atomic.AtomicInteger
 
+import org.rogach.scallop._
+
 import finesand.model.{Commit,Transaction}
 
 object PrepareData {
+
+  class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
+    val repo = opt[String]() // "../data/community-corpus/log4j"
+    val branch = opt[String]()
+    val split = opt[Double]()
+    verify()
+  }
+
   def buildFileVersions(commitsMap: Map[String,Commit], corpusPath: String, projectDir: File) = {
     val corpusDir = new File(corpusPath)
     val completed = new AtomicInteger()
@@ -43,7 +53,7 @@ object PrepareData {
 
   def main(args: Array[String]): Unit = {
     val conf = new Conf(args)
-    val repo = conf.repo()
+    val repo = conf.repo().stripSuffix("/")
     val branch = conf.branch()
     val splitRatio = conf.split()
     val projectDir = new File(repo)

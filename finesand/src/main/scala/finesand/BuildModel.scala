@@ -111,7 +111,7 @@ object BuildModel {
   }
 
   def getChangeContextScore(pp: PredictionPoint, candidate: String, changeContextIndex: ChangeContextMap, window: Int = 15) : Double = {
-    val scoreComps: List[PredictionPoint#ScoreComponent] = pp.changeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
+    val scoreComps: List[PredictionPoint#ChangeContextScoreComponent] = pp.changeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
     val candChangeContext = changeContextIndex.getOrElse(("INS", "MethodInvocation", candidate), collection.mutable.Map[(String, Int), List[(Int, Int)]]())
     val candChangeContextKeys = candChangeContext.keys.toSet
     val score = scoreComps.zipWithIndex.map { case(c, i) => {
@@ -129,12 +129,12 @@ object BuildModel {
   }
 
   def getCodeContextScore(pp: PredictionPoint, candidate: String, codeContextIndex: CodeContextMap, window: Int = 15) : Double = {
-    val scoreComps: List[PredictionPoint#ScoreComponent] = pp.codeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
+    val scoreComps: List[PredictionPoint#CodeContextScoreComponent] = pp.codeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
     val candCodeContext = codeContextIndex.getOrElse(candidate, collection.mutable.Map[(String, Int), List[(Int, Int)]]())
     val candCodeContextKeys = candCodeContext.keys.toSet
     val score = scoreComps.zipWithIndex.map { case(c, i) => {
       val (wScopeTi, wDepTi) = (c._2, c._3)
-      val transactions = codeContextIndex.getOrElse(c._1._3, collection.mutable.Map[(String, Int), List[(Int, Int)]]())
+      val transactions = codeContextIndex.getOrElse(c._1._2, collection.mutable.Map[(String, Int), List[(Int, Int)]]())
       val nTi = transactions.size
       // co-occurrence transactions must be in same transaction and token must come before prediction point token
       val cooccurTransactions = transactions.filter{ case (transKey, locs) => candCodeContextKeys.contains(transKey) }

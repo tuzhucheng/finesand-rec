@@ -89,7 +89,7 @@ object BuildCounts {
 
     if (predictionPt.isDefined) {
       val (pp, actionIdx) = predictionPt.get
-      val changeContext = new ListBuffer[PredictionPoint#ScoreComponent]()
+      val changeContext = new ListBuffer[PredictionPoint#ChangeContextScoreComponent]()
       val ppAction = actions(actionIdx)
       for (i <- 0 until actionIdx) {
         val action = actions(i)
@@ -170,18 +170,18 @@ object BuildCounts {
       }
       val parentMethodPos = temp.getPos
 
-      val token = ("Token", nodeType, label)
+      val token = (nodeType, label)
       val tokenLoc = (commit.commitId, transactionIdx, position, parentMethodPos)
       (token, tokenLoc)
     }}
 
     if (predictionPt.isDefined) {
-      val codeContext = new ListBuffer[PredictionPoint#ScoreComponent]()
+      val codeContext = new ListBuffer[PredictionPoint#CodeContextScoreComponent]()
       val pp = predictionPt.get
       tokens.foreach { case (token, tokenLoc) => {
         if (pp.pos > tokenLoc._3) {
           val scopeWeight = if (pp.parentPos == tokenLoc._4) 1 else 0.5
-          val depWeight = if (pp.variableName == token._3) 1 else 0.5
+          val depWeight = if (pp.variableName == token._2) 1 else 0.5
           val scoreComponent = (token, scopeWeight, depWeight, tokenLoc._3)
           codeContext += scoreComponent
         }
@@ -211,7 +211,7 @@ object BuildCounts {
       val partialCodeContextFile = s"${repoCorpus}/code_context_${testIndicator}part_${group}.txt"
       val writer = new BufferedWriter(new FileWriter(partialCodeContextFile))
       partialCodeContextIndex.foreach(c => {
-        writer.write(s"${c._1._1},${c._1._2},${c._1._3},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
+        writer.write(s"${c._1._1},${c._1._2},${c._2._1},${c._2._2},${c._2._3},${c._2._4}\n")
       })
       writer.close
     }
