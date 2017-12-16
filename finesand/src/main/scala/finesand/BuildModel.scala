@@ -12,6 +12,12 @@ import org.slf4j.LoggerFactory
 import finesand.model.{Commit,PredictionPoint,Transaction}
 
 object BuildModel {
+
+  class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
+    val repo = opt[String]() // "../data/community-corpus/log4j"
+    verify()
+  }
+
   type PredictionPointKey = (String, Int)
   type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
   type IndexMutableMap = collection.mutable.Map[(String, Int), List[(Int, Int)]]
@@ -197,14 +203,14 @@ object BuildModel {
   def main(args: Array[String]): Unit = {
     val logger = Logger("BuildModel")
     val conf = new Conf(args)
-    val repo = conf.repo()
+    val repo = conf.repo().stripSuffix("/")
     val repoCorpus = s"${repo}-corpus"
     val warehouseLocation = "file:${system:user.dir}/spark-warehouse"
     val spark = SparkSession
       .builder()
       .appName("finesand")
       .config("spark.sql.warehouse.dir", warehouseLocation)
-      .config("spark.master", "local")
+      //.config("spark.master", "local[4]")
       .getOrCreate()
 
     import spark.implicits._

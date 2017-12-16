@@ -22,5 +22,10 @@ lazy val root = (project in file(".")).
       "org.apache.spark" %% "spark-mllib" % sparkVersion,
       "org.rogach" %% "scallop" % "3.1.1",
       "com.typesafe.scala-logging" %% "scala-logging" % "3.7.2"
-    )
+    ),
+    assemblyMergeStrategy in assembly := {
+     case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+     case x => MergeStrategy.first
+    }
   )
+
