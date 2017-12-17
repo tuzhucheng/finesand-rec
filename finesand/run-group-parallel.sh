@@ -21,7 +21,7 @@ for i in "${!repos[@]}" ; do
     commands+=("$command")
 done
 
-parallel --dry-run --eta -j $nJobs sbt ::: "${commands[@]}"
+parallel --eta -j $nJobs sbt ::: "${commands[@]}"
 
 commands2=()
 for i in "${!repos[@]}" ; do
@@ -31,21 +31,21 @@ for i in "${!repos[@]}" ; do
     commands2+=("$command")
 done
 
-parallel --dry-run --eta -j $nJobs sbt ::: '-J-Xms256m' ::: '-J-Xmx8G' ::: "${commands2[@]}"
+parallel --eta -j $nJobs sbt ::: '-J-Xms256m' ::: '-J-Xmx8G' ::: "${commands2[@]}"
 
-#for i in "${!repos[@]}" ; do
-    #repo="${repos[$i]}"
-    #countsDir="${repoNames[$i]}-counts"
-    #countsTar="${repoNames[$i]}-counts.tar.gz"
-    #cd "$repo/.."
-    #mkdir -p $countsDir
-    #mv ${repoNames[$i]}-corpus/*{p,P}art* $countsDir
-    #tar -cvzf $countsTar $countsDir
-    #az dls fs upload --account finesand --source-path $countsTar --destination-path $cloudDest --overwrite
-    #if [ $? -eq 0 ]
-    #then
-        #echo "Success, deleting..."
-        #rm -rf ${repoNames[$i]}-corpus $countsDir $countsTar
-    #fi
-    #cd -
-#done
+for i in "${!repos[@]}" ; do
+    repo="${repos[$i]}"
+    countsDir="${repoNames[$i]}-counts"
+    countsTar="${repoNames[$i]}-counts.tar.gz"
+    cd "$repo/.."
+    mkdir -p $countsDir
+    mv ${repoNames[$i]}-corpus/*{p,P}art* $countsDir
+    tar -cvzf $countsTar $countsDir
+    az dls fs upload --account finesand --source-path $countsTar --destination-path $cloudDest --overwrite
+    if [ $? -eq 0 ]
+    then
+        echo "Success, deleting..."
+        rm -rf ${repoNames[$i]}-corpus $countsDir $countsTar
+    fi
+    cd -
+done
