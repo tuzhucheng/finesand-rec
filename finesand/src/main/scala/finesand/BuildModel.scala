@@ -197,9 +197,9 @@ object BuildModel {
     val inAcc = predictions.filter(kv => vocab.contains(kv._1)).map { case (goldMethodName, topK) => {
       ks.map(k => if (topK.toStream.map(_._1).take(k).contains(goldMethodName)) 1 else 0)
     }}
-    val inHits = oovAcc.transpose.map(l => l.reduce(_ + _))
+    val inHits = inAcc.transpose.map(l => l.reduce(_ + _))
     val inTotal = List.fill(6)(inHits.size)
-    val inFinal = oovHits.zip(inTotal).map(t => t._1.toDouble / t._2).toList
+    val inFinal = inHits.zip(inTotal).map(t => t._1.toDouble / t._2).toList
 
     ks.zipWithIndex.map{ case (k, i) => k -> Map("oov" -> oovFinal(i), "in" -> inFinal(i)) }
   }
@@ -213,7 +213,7 @@ object BuildModel {
     val logger = Logger("BuildModel")
     val conf = new Conf(args)
     val repo = conf.repo().stripSuffix("/")
-    val repoCorpus = s"${repo}-corpus"
+    val repoCorpus = s"${repo}-counts"
     val warehouseLocation = "file:${system:user.dir}/spark-warehouse"
     val spark = SparkSession
       .builder()
@@ -248,7 +248,7 @@ object BuildModel {
 
     println("Getting training predictions...")
     println(s"Total train predictions: ${trainPredictionPoints.size}")
-    List(0, 0.25, 0.5, 0.75, 1).map( wc => {
+    List(0.5).map( wc => {
       println(s"Getting training predictions using combined score for wc = ${wc}...")
       t0 = System.nanoTime
       val trainPredictions = getPredictions(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, wc)
@@ -272,7 +272,7 @@ object BuildModel {
 
     val testPredictions = getPredictions(testPredictionPoints, trainVocab, testChangeContextIndex, testCodeContextIndex, 0.5)
     val testAccuracyMap = getAccuracy(testPredictions, trainVocab)
-    accuracyMap.foreach { case (k, m) => {
+    testAccuracyMap.foreach { case (k, m) => {
       println(s"Test top-$k: oov ${m("oov")}, in ${m("in")}")
     }}
 
