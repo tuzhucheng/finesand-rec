@@ -36,6 +36,15 @@ object BuildModel {
     StructField("parentMethodPos", DataTypes.IntegerType)
   ))
 
+  val schemaCodeContext = StructType(Array(
+    StructField("node_type", DataTypes.StringType),
+    StructField("label", DataTypes.StringType),
+    StructField("commit_id", DataTypes.StringType),
+    StructField("transaction_idx", DataTypes.IntegerType),
+    StructField("position", DataTypes.IntegerType),
+    StructField("parentMethodPos", DataTypes.IntegerType)
+  ))
+
   def plus(m1: IndexMutableMap, m2: IndexMutableMap) = {
     m2 foreach {
       case (k, v) =>
@@ -57,12 +66,12 @@ object BuildModel {
       .csv(s"${corpusPath}/${partFilePattern}")
       .rdd
 
-    val changeContextRDD = changeContextRawRDD.map(r => ((r.getAs[String](0), r.getAs[String](1), r.getAs[String](2)), collection.mutable.Map(((r.getAs[String](3), r.getAs[Int](4)) -> List((r.getAs[Int](5), r.getAs[Int](6)))))))
+    val changeContextRDD = changeContextRawRDD.map(r => ((r.getAs[String]("change_type"), r.getAs[String]("node_type"), r.getAs[String]("label")), collection.mutable.Map(((r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx")) -> List((r.getAs[Int]("position"), r.getAs[Int]("parentMethodPos")))))))
       .reduceByKey((a, b) => plus(a, b))
 
     val changeContextIndex = changeContextRDD.collectAsMap
 
-    val vocabRDD = changeContextRawRDD.map(r => (r.getAs[String](0), r.getAs[String](1), r.getAs[String](2)))
+    val vocabRDD = changeContextRawRDD.map(r => (r.getAs[String]("change_type"), r.getAs[String]("node_type"), r.getAs[String]("label")))
       .filter(t => t._1 == "INS" && t._2 == "MethodInvocation")
       .map(t => t._3)
       .distinct
@@ -83,11 +92,11 @@ object BuildModel {
     val codeContextRawRDD = spark.read
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
-      .schema(schema)
+      .schema(schemaCodeContext)
       .csv(s"${corpusPath}/${partFilePattern}")
       .rdd
 
-    val codeContextRDD = codeContextRawRDD.map(r => (r.getAs[String](2), collection.mutable.Map(((r.getAs[String](3), r.getAs[Int](4)) -> List((r.getAs[Int](5), r.getAs[Int](6)))))))
+    val codeContextRDD = codeContextRawRDD.map(r => (r.getAs[String]("label"), collection.mutable.Map(((r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx")) -> List((r.getAs[Int]("position"), r.getAs[Int]("parentMethodPos")))))))
       .reduceByKey((a, b) => plus(a, b))
       .map{ case (k, m) => {
         m foreach {
@@ -98,7 +107,7 @@ object BuildModel {
     codeContextRDD.collectAsMap
   }
 
-  def getPredictionPoints(repoCorpus: String, dataset: String) = {
+  def getPredictionPoints(repoCorpus: String, dataset: String): PredictionPointMapType = {
     val partFilePattern = if (dataset == Train) "predictionPointsPart" else "predictionPointsTestPart"
     val serializedPredictionFiles = new File(repoCorpus).listFiles.filter(f => f.getName contains partFilePattern).map(f => f.getCanonicalPath)
     var predictionPoints: PredictionPointMapType = collection.mutable.Map()
@@ -153,7 +162,7 @@ object BuildModel {
   }
 
   def getPredictions(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, wc: Double, k: Int = 10) = {
-    val predictions = predictionPoints.par.map { case (_, pp) => {
+    val predictions = predictionPoints.toList.par.map { case (_, pp) => {
       val changeContextScores = vocab.map(api => getChangeContextScore(pp, api, changeContextIndex))
       val codeContextScores = vocab.map(api => getCodeContextScore(pp, api, codeContextIndex))
       val scores = (changeContextScores zip codeContextScores).map { case (scoreC, scoreT) => wc*scoreC + (1-wc)*scoreT }
@@ -176,21 +185,21 @@ object BuildModel {
   implicit def bool2int(b:Boolean) = if (b) 1 else 0
 
   // Get top-1,2,3,4,5,10 accuracy
-  def getAccuracy(predictions: scala.collection.mutable.Map[String, Array[(String, Double)]], vocab: Array[String]) = {
+  def getAccuracy(predictions: Seq[(String, Array[(String, Double)])], vocab: Array[String]) = {
     val ks = List(1, 2, 3, 4, 5, 10)
     val oovAcc = predictions.map { case (goldMethodName, topK) => {
-      ks.map(k => if (topK.toStream.take(k).contains(goldMethodName)) 1 else 0)
+      ks.map(k => if (topK.toStream.map(_._1).take(k).contains(goldMethodName)) 1 else 0)
     }}
     val oovHits = oovAcc.transpose.map(l => l.reduce(_ + _))
     val oovTotal = List.fill(6)(oovAcc.size)
-    val oovFinal = oovHits.zip(oovTotal).map(t => t._1 / t._2).toList
+    val oovFinal = oovHits.zip(oovTotal).map(t => t._1.toDouble / t._2).toList
 
     val inAcc = predictions.filter(kv => vocab.contains(kv._1)).map { case (goldMethodName, topK) => {
-      ks.map(k => if (topK.toStream.take(k).contains(goldMethodName)) 1 else 0)
+      ks.map(k => if (topK.toStream.map(_._1).take(k).contains(goldMethodName)) 1 else 0)
     }}
     val inHits = oovAcc.transpose.map(l => l.reduce(_ + _))
     val inTotal = List.fill(6)(inHits.size)
-    val inFinal = oovHits.zip(inTotal).map(t => t._1 / t._2).toList
+    val inFinal = oovHits.zip(inTotal).map(t => t._1.toDouble / t._2).toList
 
     ks.zipWithIndex.map{ case (k, i) => k -> Map("oov" -> oovFinal(i), "in" -> inFinal(i)) }
   }
@@ -219,18 +228,21 @@ object BuildModel {
     println("Getting change context index and vocab...")
     var t0 = System.nanoTime
     val (trainChangeContextIndex, trainVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Train)
+    val (testChangeContextIndex, testVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Test)
     var t1 = System.nanoTime
     println(s"Finished getting change context index and vocab. Took ${(t1 - t0) / 1000000000} seconds.")
 
     println("Getting code context index and vocab...")
     t0 = System.nanoTime
     val trainCodeContextIndex = getCodeContextIndex(spark, repoCorpus, Train)
+    val testCodeContextIndex = getCodeContextIndex(spark, repoCorpus, Test)
     t1 = System.nanoTime
     println(s"Finished getting code context index and vocab. Took ${(t1 - t0) / 1000000000} seconds.")
 
     println("Getting prediction points...")
     t0 = System.nanoTime
     val trainPredictionPoints = getPredictionPoints(repoCorpus, Train)
+    val testPredictionPoints = getPredictionPoints(repoCorpus, Test)
     t1 = System.nanoTime
     println(s"Finished getting prediction points. Took ${(t1 - t0) / 1000000000} seconds.")
 
@@ -257,6 +269,12 @@ object BuildModel {
       }}
       writer.close
     })
+
+    val testPredictions = getPredictions(testPredictionPoints, trainVocab, testChangeContextIndex, testCodeContextIndex, 0.5)
+    val testAccuracyMap = getAccuracy(testPredictions, trainVocab)
+    accuracyMap.foreach { case (k, m) => {
+      println(s"Test top-$k: oov ${m("oov")}, in ${m("in")}")
+    }}
 
     //val optimalWc = findOptimalWc(trainPredictions)
 
