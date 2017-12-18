@@ -4,6 +4,7 @@ import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
 import scala.collection.parallel.immutable.ParVector
 import scala.io.Source
+import scala.util.{Try,Failure}
 import sys.process._
 import java.io.{BufferedWriter,File,FileWriter,FileOutputStream,ObjectOutputStream}
 
@@ -30,6 +31,8 @@ object BuildCounts {
 
   type PredictionPointKey = (String, Int)
   type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
+  type ActionType = ((String, String, String), (String, Int, Int, Int))
+  type TokenType = ((String, String), (String, Int, Int, Int))
   val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
   val Train = "train"
   val Test = "test"
@@ -56,7 +59,7 @@ object BuildCounts {
     commits
   }
 
-  def getActionsForTrees(srcTree: TreeContext, dstTree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType) = {
+  def getActionsForTrees(srcTree: TreeContext, dstTree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType): List[ActionType] = {
     val src = srcTree.getRoot
     val dst = dstTree.getRoot
     val matcher = Matchers.getInstance().getMatcher(src, dst)
@@ -124,9 +127,14 @@ object BuildCounts {
           val oldFilePath = (nameParts.init :+ ("old_" + nameParts.last)).mkString("/")
           val file1 = s"${repoCorpus}/${c.commitId}/${oldFilePath}"
           val file2 = s"${repoCorpus}/${c.commitId}/${t.path}"
-          val srcTree = Generators.getInstance().getTree(file1)
-          val dstTree = Generators.getInstance().getTree(file2)
-          val actions = getActionsForTrees(srcTree, dstTree, c, i, predictionPoints)
+          val actions : List[ActionType] =
+            Try({
+              val srcTree = Generators.getInstance().getTree(file1)
+              val dstTree = Generators.getInstance().getTree(file2)
+              getActionsForTrees(srcTree, dstTree, c, i, predictionPoints)
+            }).recoverWith({
+              case (ex: Throwable) => println("generatedChangeContext exception.."); Failure(ex)
+            }).getOrElse(List.empty[ActionType])
 
           actions
         }}
@@ -143,7 +151,7 @@ object BuildCounts {
     }
   }
 
-  def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType) = {
+  def getTokensForTree(tree: TreeContext, commit: Commit, transactionIdx: Int, predictionPoints: PredictionPointMapType): List[TokenType] = {
     var predictionPt: Option[PredictionPoint] = predictionPoints get (commit.commitId, transactionIdx)
 
     val tokens = tree.getRoot.preOrder.toList
@@ -210,7 +218,11 @@ object BuildCounts {
         .zipWithIndex.flatMap{ case (t, i) => {
           val newFile = s"${repoCorpus}/${c.commitId}/${t.path}"
           val dstTree = Generators.getInstance().getTree(newFile)
-          val tokens = getTokensForTree(dstTree, c, i, predictionPoints)
+          val tokens: List[TokenType] = Try({
+            getTokensForTree(dstTree, c, i, predictionPoints)
+          }).recoverWith({
+            case (ex: Throwable) => println("generatedChangeContext exception.."); Failure(ex)
+          }).getOrElse(List.empty[TokenType])
 
           tokens
         }}
