@@ -29,7 +29,7 @@ with open('{}/repositories.json'.format(args.dir)) as f:
 
     repo_groups = chunks(args.repos, args.group)
     for group in repo_groups:
-        shell_args = ['./run-group-parallel.sh', str(args.group)]
+        shell_args = ['./run-group-parallel.sh', str(len(group))]
         shell_args.extend(group)
         shell_args.extend(list(map(lambda r: '{}/{}'.format(args.dir, r), group)))
         shell_args.extend(list(map(lambda r: repo_map[r], group)))
