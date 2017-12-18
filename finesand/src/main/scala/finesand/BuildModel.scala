@@ -192,14 +192,16 @@ object BuildModel {
     }}
     val oovHits = oovAcc.transpose.map(l => l.reduce(_ + _))
     val oovTotal = List.fill(6)(oovAcc.size)
-    val oovFinal = oovHits.zip(oovTotal).map(t => t._1.toDouble / t._2).toList
+    val oovFinal = oovHits.zip(oovTotal).map(t => t._1 * 100.0 / t._2).toList
 
     val inAcc = predictions.filter(kv => vocab.contains(kv._1)).map { case (goldMethodName, topK) => {
       ks.map(k => if (topK.toStream.map(_._1).take(k).contains(goldMethodName)) 1 else 0)
     }}
     val inHits = inAcc.transpose.map(l => l.reduce(_ + _))
-    val inTotal = List.fill(6)(inHits.size)
-    val inFinal = inHits.zip(inTotal).map(t => t._1.toDouble / t._2).toList
+    val inTotal = List.fill(6)(inAcc.size)
+    val inFinal = inHits.zip(inTotal).map(t => t._1 * 100.0 / t._2).toList
+    println("Number of Predictions:", oovAcc.size)
+    println("Number of Predictions (in-vocab):", inAcc.size)
 
     ks.zipWithIndex.map{ case (k, i) => k -> Map("oov" -> oovFinal(i), "in" -> inFinal(i)) }
   }
