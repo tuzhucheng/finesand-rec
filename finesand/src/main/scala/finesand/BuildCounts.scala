@@ -217,8 +217,8 @@ object BuildCounts {
         .filter(t => t.path.endsWith(s".$language"))
         .zipWithIndex.flatMap{ case (t, i) => {
           val newFile = s"${repoCorpus}/${c.commitId}/${t.path}"
-          val dstTree = Generators.getInstance().getTree(newFile)
           val tokens: List[TokenType] = Try({
+            val dstTree = Generators.getInstance().getTree(newFile)
             getTokensForTree(dstTree, c, i, predictionPoints)
           }).recoverWith({
             case (ex: Throwable) => println("generatedChangeContext exception.."); Failure(ex)
