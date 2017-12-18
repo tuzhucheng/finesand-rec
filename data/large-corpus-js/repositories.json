@@ -1,0 +1,52 @@
+{
+    "repositories": [
+        {
+            "url": "https://github.com/expressjs/express.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/mrdoob/three.js,git",
+            "branch": "dev"
+        },
+        {
+            "url": "https://github.com/hakimel/reveal.js.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/Semantic-Org/Semantic-UI.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/h5bp/html5-boilerplate.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/meteor/meteor.git",
+            "branch": "devel"
+        },
+        {
+            "url": "https://github.com/atom/atom.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/jquery/jquery.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/airbnb/javascript.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/d3/d3.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/vuejs/vue.git",
+            "branch": "dev"
+        },
+        {
+            "url": "https://github.com/facebook/react.git",
+            "branch": "master"
+        }
+    ]
+}
