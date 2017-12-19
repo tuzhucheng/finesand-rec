@@ -16,7 +16,8 @@ object BuildModel {
 
   class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
     val repo = opt[String]() // "../data/community-corpus/log4j"
-    val jdk = opt[Boolean](default = Some(true))
+    val jdk = opt[Boolean](default = Some(false))
+    val aggregate = opt[Boolean](default = Some(false))
     verify()
   }
 
@@ -166,49 +167,29 @@ object BuildModel {
     score
   }
 
-  def getPredictions(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, wc: Double, k: Int = 10) = {
+  def getPredictionsAggregateScore(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, wc: Double, k: Int = 10) = {
     val predictions = predictionPoints.toList.par.map { case (_, pp) => {
       val changeContextScores = vocab.map(api => getChangeContextScore(pp, api, changeContextIndex))
       val codeContextScores = vocab.map(api => getCodeContextScore(pp, api, codeContextIndex))
       val scores = (changeContextScores zip codeContextScores).map { case (scoreC, scoreT) => wc*scoreC + (1-wc)*scoreT }
       val topK = (vocab zip scores).sortWith(_._2 > _._2).take(k)
-      // val scores = (changeContextScores zip codeContextScores)
-      // val topK = (vocab zip scores).sortWith((a, b) => (a._2._1 + a._2._2) > (a._2._1 + a._2._2)).take(20)
       (pp.methodName, topK)
     }}
     predictions.seq
   }
 
-  def aggregateScoreAndTakeTop(predictions: scala.collection.mutable.Map[String, Array[(String, (Double, Double))]], wc: Double, top: Int) = {
-    val aggregated = predictions.map { case (goldMethodName, topK) => {
-      val aggregatedList = topK.map { case (api, scores) => (api, wc*scores._1 + (1-wc)*scores._2)}
-      goldMethodName -> aggregatedList.sortWith(_._2 > _._2).take(top)
+  def getPredictionsSeparateScore(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, k: Option[Int] = None) = {
+    val predictions = predictionPoints.toList.par.map { case (_, pp) => {
+      val changeContextScores = vocab.map(api => getChangeContextScore(pp, api, changeContextIndex))
+      val codeContextScores = vocab.map(api => getCodeContextScore(pp, api, codeContextIndex))
+      val scores = (changeContextScores zip codeContextScores)
+      val topK = k match {
+        case Some(limit) => (vocab zip scores).sortWith((a, b) => (a._2._1 + a._2._2) > (a._2._1 + a._2._2)).take(limit)
+        case None => (vocab zip scores)
+      }
+      (pp.methodName, topK)
     }}
-    aggregated
-  }
-
-  implicit def bool2int(b:Boolean) = if (b) 1 else 0
-
-  // Get top-1,2,3,4,5,10 accuracy
-  def getAccuracy(predictions: Seq[(String, Array[(String, Double)])], vocab: Array[String]) = {
-    val ks = List(1, 2, 3, 4, 5, 10)
-    val oovAcc = predictions.map { case (goldMethodName, topK) => {
-      ks.map(k => if (topK.toStream.map(_._1).take(k).contains(goldMethodName)) 1 else 0)
-    }}
-    val oovHits = oovAcc.transpose.map(l => l.reduce(_ + _))
-    val oovTotal = List.fill(6)(oovAcc.size)
-    val oovFinal = oovHits.zip(oovTotal).map(t => t._1 * 100.0 / t._2).toList
-
-    val inAcc = predictions.filter(kv => vocab.contains(kv._1)).map { case (goldMethodName, topK) => {
-      ks.map(k => if (topK.toStream.map(_._1).take(k).contains(goldMethodName)) 1 else 0)
-    }}
-    val inHits = inAcc.transpose.map(l => l.reduce(_ + _))
-    val inTotal = List.fill(6)(inAcc.size)
-    val inFinal = inHits.zip(inTotal).map(t => t._1 * 100.0 / t._2).toList
-    println("Number of Predictions:", oovAcc.size)
-    println("Number of Predictions (in-vocab):", inAcc.size)
-
-    ks.zipWithIndex.map{ case (k, i) => k -> Map("oov" -> oovFinal(i), "in" -> inFinal(i)) }
+    predictions.seq
   }
 
   def findOptimalWc(trainPredictions: scala.collection.mutable.Map[String, Array[(String, (Double, Double))]]) = {
@@ -219,6 +200,7 @@ object BuildModel {
   def main(args: Array[String]): Unit = {
     val logger = Logger("BuildModel")
     val conf = new Conf(args)
+    val aggregateCounts = conf.aggregate()
     val repo = conf.repo().stripSuffix("/")
     val repoCorpus = s"${repo}-counts"
     val warehouseLocation = "file:${system:user.dir}/spark-warehouse"
@@ -260,30 +242,29 @@ object BuildModel {
 
     println("Getting training predictions...")
     println(s"Total train predictions: ${trainPredictionPoints.size}")
-    List(0.5).map( wc => {
-      println(s"Getting training predictions using combined score for wc = ${wc}...")
-      t0 = System.nanoTime
-      val trainPredictions = getPredictions(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, wc)
-      val accuracyMap = getAccuracy(trainPredictions, trainVocab)
-      println(s"wc: $wc")
-      accuracyMap.foreach { case (k, m) => {
-        println(s"top-$k: oov ${m("oov")}, in ${m("in")}")
-      }}
-      t1 = System.nanoTime
-      println(s"Evaluating accuracy for wc = ${wc} took ${(t1 - t0) / 1000000000} seconds...")
+    t0 = System.nanoTime
+    val trainPredictions = getPredictionsSeparateScore(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex)
+    var maxMAP = 0.0
+    var wcMax = 0.0
+    for (i <- 0 to 100 by 5) {
+      val wc = i.toDouble / 100
+      val aggregatedScorePredictions = ModelUtils.aggregateScoreAndTakeTop(trainPredictions, wc, 10)
+      val wcMAP = ModelUtils.getMAP(aggregatedScorePredictions)
+      if (wcMAP > maxMAP) {
+        maxMAP = wcMAP
+        wcMax = wc
+        val accuracyMap = ModelUtils.getAccuracy(aggregatedScorePredictions, trainVocab)
+        println(s"wc: $wc, MAP: $wcMAP")
+        accuracyMap.foreach { case (k, m) => {
+          println(s"top-$k: oov ${m("oov")}, in ${m("in")}")
+        }}
+      }
+    }
+    t1 = System.nanoTime
+    println(s"Parameter search took ${(t1 - t0) / 1000000000} seconds...")
 
-      val writer = new BufferedWriter(new FileWriter(s"${repoCorpus}/train_predictions_wc_$wc.txt"))
-      trainPredictions.foreach { case (goldMethodName, topK) => {
-        val candidatesStr = topK.map { case (api, score) => {
-          s"${api},${score}"
-        }}.mkString(",")
-        writer.write(goldMethodName + "," + candidatesStr + "\n")
-      }}
-      writer.close
-    })
-
-    val testPredictions = getPredictions(testPredictionPoints, trainVocab, testChangeContextIndex, testCodeContextIndex, 0.5)
-    val testAccuracyMap = getAccuracy(testPredictions, trainVocab)
+    val testPredictions = getPredictionsAggregateScore(testPredictionPoints, trainVocab, testChangeContextIndex, testCodeContextIndex, wcMax)
+    val testAccuracyMap = ModelUtils.getAccuracy(testPredictions, trainVocab)
     testAccuracyMap.foreach { case (k, m) => {
       println(s"Test top-$k: oov ${m("oov")}, in ${m("in")}")
     }}
