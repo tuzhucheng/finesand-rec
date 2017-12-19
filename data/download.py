@@ -23,6 +23,6 @@ def download(repos_dir):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('repos_dir', type=str, choices=['large-corpus', 'community-corpus'])
+    parser.add_argument('repos_dir', type=str, choices=['large-corpus', 'community-corpus', 'large-corpus-extra'])
     args = parser.parse_args()
     download(args.repos_dir)

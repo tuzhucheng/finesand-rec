@@ -1,0 +1,44 @@
+{
+    "repositories": [
+        {
+            "url": "https://github.com/xetorthio/jedis.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/PhilJay/MPAndroidChart.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/pockethub/PocketHub.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/realm/realm-java.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/SeleniumHQ/selenium.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/google/iosched.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/google/guice.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/junit-team/junit4.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/eclipse/vert.x.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/openzipkin/zipkin.git",
+            "branch": "master"
+        }
+    ]
+}
