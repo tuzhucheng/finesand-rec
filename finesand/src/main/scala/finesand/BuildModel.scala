@@ -1,6 +1,7 @@
 package finesand
 
 import java.io.{BufferedWriter,File,FileInputStream,FileOutputStream,FileWriter,ObjectInputStream,ObjectOutputStream}
+import scala.io.Source
 
 import com.typesafe.scalalogging.Logger
 import org.apache.spark.rdd.RDD
@@ -15,6 +16,7 @@ object BuildModel {
 
   class Conf(arguments: Seq[String]) extends ScallopConf(arguments) {
     val repo = opt[String]() // "../data/community-corpus/log4j"
+    val jdk = opt[Boolean](default = Some(true))
     verify()
   }
 
@@ -107,7 +109,7 @@ object BuildModel {
     codeContextRDD.collectAsMap
   }
 
-  def getPredictionPoints(repoCorpus: String, dataset: String): PredictionPointMapType = {
+  def getPredictionPoints(repoCorpus: String, dataset: String, methodSpace: collection.mutable.Set[String] = collection.mutable.Set.empty[String]): PredictionPointMapType = {
     val partFilePattern = if (dataset == Train) "predictionPointsPart" else "predictionPointsTestPart"
     val serializedPredictionFiles = new File(repoCorpus).listFiles.filter(f => f.getName contains partFilePattern).map(f => f.getCanonicalPath)
     var predictionPoints: PredictionPointMapType = collection.mutable.Map()
@@ -118,7 +120,10 @@ object BuildModel {
           catch { case ex: ClassNotFoundException => super.resolveClass(desc) }
         }
       }
-      val currentMap = ois.readObject.asInstanceOf[PredictionPointMapType]
+      var currentMap = ois.readObject.asInstanceOf[PredictionPointMapType]
+      if (!methodSpace.isEmpty) {
+        currentMap = currentMap.filter { case (trans, pp) => methodSpace.contains(pp.methodName) }
+      }
       predictionPoints ++= currentMap
       ois.close
     })
@@ -226,6 +231,7 @@ object BuildModel {
     import spark.implicits._
 
     // Using println() instead of logging to distinguish from Spark logging
+    println("JDK filtering:", conf.jdk())
     println("Getting change context index and vocab...")
     var t0 = System.nanoTime
     val (trainChangeContextIndex, trainVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Train)
@@ -242,8 +248,13 @@ object BuildModel {
 
     println("Getting prediction points...")
     t0 = System.nanoTime
-    val trainPredictionPoints = getPredictionPoints(repoCorpus, Train)
-    val testPredictionPoints = getPredictionPoints(repoCorpus, Test)
+    var predictionMethodSpace = collection.mutable.Set.empty[String]
+    if (conf.jdk()) {
+      val methods = Source.fromFile("../jdk-method-miner/jdk8_methods_filtered.txt").getLines.toSet
+      predictionMethodSpace = collection.mutable.Set[String](methods.toSeq: _*)
+    }
+    val trainPredictionPoints = getPredictionPoints(repoCorpus, Train, predictionMethodSpace)
+    val testPredictionPoints = getPredictionPoints(repoCorpus, Test, predictionMethodSpace)
     t1 = System.nanoTime
     println(s"Finished getting prediction points. Took ${(t1 - t0) / 1000000000} seconds.")
 
