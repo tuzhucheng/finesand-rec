@@ -1,0 +1,24 @@
+{
+    "repositories": [
+        {
+            "url": "https://github.com/apache/log4j.git",
+            "branch": "trunk"
+        },
+        {
+            "url": "https://github.com/spring-projects/spring-framework.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/antlr/antlr4.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/eclipse/jgit.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/itext/itextpdf.git",
+            "branch": "master"
+        }
+    ]
+}

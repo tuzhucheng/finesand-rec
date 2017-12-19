@@ -2,6 +2,18 @@
 
 Implementation and Experiments with API Code Recommendation using Statistical Learning from Fine-Grained Changes
 
+## Downloading Data
+
+To see popular repositories on GitHub, you can run a query like the following.
+```
+curl -G https://api.github.com/search/repositories       \
+    --data-urlencode "q=created:<2014-09-01" \
+    --data-urlencode "sort=stars"                          \
+    --data-urlencode "order=desc"                          \
+    -H "Accept: application/vnd.github.preview"            \
+    | jq '.items[] | select(.language == "JavaScript") | {name, description, language, stargazers_count, watchers_count, forks_count, html_url}'
+```
+
 ## Git Notes
 
 To view all commits in a repo, we use:
