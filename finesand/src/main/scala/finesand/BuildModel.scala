@@ -202,6 +202,7 @@ object BuildModel {
     val conf = new Conf(args)
     val aggregateCounts = conf.aggregate()
     val repo = conf.repo().stripSuffix("/")
+    val repoName = repo.split("/").last
     val repoCorpus = s"${repo}-counts"
     val warehouseLocation = "file:${system:user.dir}/spark-warehouse"
     val spark = SparkSession
@@ -241,7 +242,10 @@ object BuildModel {
     println(s"Finished getting prediction points. Took ${(t1 - t0) / 1000000000} seconds.")
 
     println("Getting training predictions...")
-    println(s"Total train predictions: ${trainPredictionPoints.size}")
+    val writer = new BufferedWriter(new FileWriter(s"results/${repoName}.log"))
+    val totalTrainMsg = s"Total train predictions: ${trainPredictionPoints.size}"
+    println(totalTrainMsg)
+    writer.write(totalTrainMsg + "\n")
     val trainPredictions = getPredictionsSeparateScore(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex)
     var maxMAP = 0.0
     var wcMax = 0.0
@@ -254,32 +258,35 @@ object BuildModel {
         maxMAP = wcMAP
         wcMax = wc
         val accuracyMap = ModelUtils.getAccuracy(aggregatedScorePredictions, trainVocab)
-        println(s"wc: $wc, MAP: $wcMAP")
+        val header = s"wc: $wc, MAP: ${wcMAP}\n====================="
+        println(header)
+        writer.write(header + "\n")
         accuracyMap.foreach { case (k, m) => {
-          println(s"top-$k: oov ${m("oov")}, in ${m("in")}")
+          val accuracyLine = s"top-$k: oov ${m("oov")}, in ${m("in")}"
+          println(accuracyLine)
+          writer.write(accuracyLine + "\n")
         }}
       }
       t1 = System.nanoTime
-      println(s"Parameter search for wc=$wc took ${(t1 - t0) / 1000000000} seconds...")
+      val timingMsg = s"Parameter search for wc=$wc took ${(t1 - t0) / 1000000000} seconds..."
+      println(timingMsg)
+      writer.write(timingMsg + "\n")
     }
 
+    val totalTestMsg = s"Total test predictions: ${testPredictionPoints.size}"
+    println(totalTestMsg)
+    writer.write(totalTestMsg + "\n")
+    val bestWcMsg = s"Best wc=$wcMax MAP=$maxMAP"
+    println(bestWcMsg)
+    writer.write(bestWcMsg + "\n")
     val testPredictions = getPredictionsAggregateScore(testPredictionPoints, trainVocab, testChangeContextIndex, testCodeContextIndex, wcMax)
     val testAccuracyMap = ModelUtils.getAccuracy(testPredictions, trainVocab)
     testAccuracyMap.foreach { case (k, m) => {
-      println(s"Test top-$k: oov ${m("oov")}, in ${m("in")}")
+      val accuracyLine = s"Test top-$k: oov ${m("oov")}, in ${m("in")}"
+      println(accuracyLine)
+      writer.write(accuracyLine + "\n")
     }}
 
-    //val optimalWc = findOptimalWc(trainPredictions)
-
-    // Dump indexes to file for debugging later
-     //val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/changeContextIndex"))
-     //oos.writeObject(trainChangeContextIndex)
-     //oos.close
-
-     //val oos2 = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/codeContextIndex"))
-     //oos2.writeObject(trainCodeContextIndex)
-     //oos2.close
-
-    // To read, see https://alvinalexander.com/scala/how-to-use-serialization-in-scala-serializable-trait
+    writer.close
   }
 }
