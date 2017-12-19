@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 
-# Args: [n_jobs] [repo_names] [repo_paths] [repo_branches]
+# Args: [n_jobs] [train_ratio] [repo_names] [repo_paths] [repo_branches] [cloud_path]
 
 nJobs=$1
-repoNames=( "${@:2:$nJobs}" )
-repos=( "${@:2+${nJobs}:${nJobs}}" )
-repoBranches=( "${@:2+2*${nJobs}:${nJobs}}" )
-cloudDestIdx=$((2+3*${nJobs}))
+trainRatio=$2
+repoNames=( "${@:3:$nJobs}" )
+repos=( "${@:3+${nJobs}:${nJobs}}" )
+repoBranches=( "${@:3+2*${nJobs}:${nJobs}}" )
+cloudDestIdx=$((3+3*${nJobs}))
 cloudDest=${!cloudDestIdx}
 echo ${repoNames[@]}
 echo ${repos[@]}
@@ -16,7 +17,7 @@ echo ${cloudDest}
 commands=()
 for i in "${!repos[@]}" ; do
     repo="${repos[$i]}"
-    sbtargs1="runMain finesand.PrepareData --repo $repo --branch ${repoBranches[$i]} --split 1.0"
+    sbtargs1="runMain finesand.PrepareData --repo $repo --branch ${repoBranches[$i]} --split ${trainRatio}"
     command="$sbtargs1"
     commands+=("$command")
 done

@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('group', type=int)
 parser.add_argument('repos', nargs='+', type=str)
 parser.add_argument('--dir', type=str, default='../data/large-corpus')
+parser.add_argument('--train-ratio', type=float, default=1.0)
 parser.add_argument('--cloud-dest', type=str, default='/large-corpus-counts')
 args = parser.parse_args()
 
@@ -30,6 +31,7 @@ with open('{}/repositories.json'.format(args.dir)) as f:
     repo_groups = chunks(args.repos, args.group)
     for group in repo_groups:
         shell_args = ['./run-group-parallel.sh', str(len(group))]
+        shell_args.append(str(args.train_ratio))
         shell_args.extend(group)
         shell_args.extend(list(map(lambda r: '{}/{}'.format(args.dir, r), group)))
         shell_args.extend(list(map(lambda r: repo_map[r], group)))
