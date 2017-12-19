@@ -1,0 +1,36 @@
+{
+    "repositories": [
+        {
+            "url": "https://github.com/searchbox-io/Jest.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/realm/realm-java.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/querydsl/querydsl.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/prestodb/presto.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/atomix/atomix.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/OryxProject/oryx.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/jankotek/mapdb.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/real-logic/aeron.git",
+            "branch": "master"
+        }
+    ]
+}

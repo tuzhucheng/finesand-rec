@@ -39,6 +39,86 @@
         {
             "url": "https://github.com/openzipkin/zipkin.git",
             "branch": "master"
+        },
+        {
+            "url": "https://github.com/ben-manes/caffeine.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/ehcache/ehcache3.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/aurora.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/google/FreeBuilder.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/square/javapoet.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/haifengl/smile.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/JetBrains/xodus.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/redisson/redisson.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/apache/avro.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/Netflix/governator.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/atomix/copycat.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/orbit/orbit.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/AxonFramework/AxonFramework.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/vavr-io/vavr.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/zalando/riptide.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/square/retrofit.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/owlike/genson.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/square/moshi.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/elastic/logstash.git",
+            "branch": "master"
+        },
+        {
+            "url": "https://github.com/bnjmn/weka.git",
+            "branch": "master"
         }
     ]
 }
