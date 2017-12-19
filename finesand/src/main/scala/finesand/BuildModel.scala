@@ -221,7 +221,6 @@ object BuildModel {
       .builder()
       .appName("finesand")
       .config("spark.sql.warehouse.dir", warehouseLocation)
-      //.config("spark.master", "local[4]")
       .getOrCreate()
 
     import spark.implicits._
