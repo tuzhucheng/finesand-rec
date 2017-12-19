@@ -242,11 +242,11 @@ object BuildModel {
 
     println("Getting training predictions...")
     println(s"Total train predictions: ${trainPredictionPoints.size}")
-    t0 = System.nanoTime
     val trainPredictions = getPredictionsSeparateScore(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex)
     var maxMAP = 0.0
     var wcMax = 0.0
-    for (i <- 0 to 100 by 5) {
+    for (i <- 0 to 100 by 10) {
+      t0 = System.nanoTime
       val wc = i.toDouble / 100
       val aggregatedScorePredictions = ModelUtils.aggregateScoreAndTakeTop(trainPredictions, wc, 10)
       val wcMAP = ModelUtils.getMAP(aggregatedScorePredictions)
@@ -259,9 +259,9 @@ object BuildModel {
           println(s"top-$k: oov ${m("oov")}, in ${m("in")}")
         }}
       }
+      t1 = System.nanoTime
+      println(s"Parameter search for wc=$wc took ${(t1 - t0) / 1000000000} seconds...")
     }
-    t1 = System.nanoTime
-    println(s"Parameter search took ${(t1 - t0) / 1000000000} seconds...")
 
     val testPredictions = getPredictionsAggregateScore(testPredictionPoints, trainVocab, testChangeContextIndex, testCodeContextIndex, wcMax)
     val testAccuracyMap = ModelUtils.getAccuracy(testPredictions, trainVocab)
