@@ -228,6 +228,7 @@ object BuildModel {
     println(s"Finished getting prediction points. Took ${(t1 - t0) / 1000000000} seconds.")
 
     println("Getting training predictions...")
+    val logFileName = if (conf.jdk()) s"${repoName}-jdk" else s"${repoName}"
     val writer = new BufferedWriter(new FileWriter(s"results/${repoName}.log"))
     val totalTrainMsg = s"Total train predictions: ${trainPredictionPoints.size}"
     println(totalTrainMsg)
@@ -265,8 +266,7 @@ object BuildModel {
     val bestWcMsg = s"Best wc=$wcMax MAP=$maxMAP"
     println(bestWcMsg)
     writer.write(bestWcMsg + "\n")
-    // TODO Change to trainChangeContextIndex
-    val testPredictions = getPredictionsAggregateScore(testPredictionPoints, trainVocab, testChangeContextIndex, testCodeContextIndex, wcMax)
+    val testPredictions = getPredictionsAggregateScore(testPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, wcMax)
     val testAccuracyMap = ModelUtils.getAccuracy(testPredictions, trainVocab)
     testAccuracyMap.foreach { case (k, m) => {
       val accuracyLine = s"Test top-$k: oov ${m("oov")}, in ${m("in")}"
