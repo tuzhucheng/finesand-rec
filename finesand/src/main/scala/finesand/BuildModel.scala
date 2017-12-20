@@ -23,11 +23,11 @@ object BuildModel {
 
   type PredictionPointKey = (String, Int)
   type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
-  type ChangeContextMap = collection.Map[(String, String, String),collection.mutable.Set[Int]]
-  type CodeContextMap = collection.Map[String,collection.mutable.Set[Int]]
+  type ChangeContextMap = collection.Map[(String, String, String),collection.mutable.Set[(String,Int)]]
+  type CodeContextMap = collection.Map[String,collection.mutable.Set[(String,Int)]]
   val Train = "train"
   val Test = "test"
-  val emptySet = collection.mutable.Set.empty[Int]
+  val emptySet = collection.mutable.Set.empty[(String,Int)]
 
   val schema = StructType(Array(
     StructField("change_type", DataTypes.StringType),
@@ -59,9 +59,9 @@ object BuildModel {
 
     val changeContextRDD = changeContextRawRDD.map(r => (
         (r.getAs[String]("change_type"), r.getAs[String]("node_type"), r.getAs[String]("label")),
-        (r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx")
-      )
-      .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s.add(e), (s1, s2) => s1.union(s2))
+        (r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx"))
+      ))
+      .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s + e, (s1, s2) => s1.union(s2))
 
     val changeContextIndex = changeContextRDD.collectAsMap
 
@@ -95,8 +95,8 @@ object BuildModel {
     val codeContextRDD = codeContextRawRDD.map(r => (
         r.getAs[String]("label"),
         (r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx"))
-      )
-      .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s.add(e), (s1, s2) => s1.union(s2))
+      ))
+      .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s + e, (s1, s2) => s1.union(s2))
     codeContextRDD.collectAsMap
   }
 
@@ -129,7 +129,7 @@ object BuildModel {
       val transactions = changeContextIndex.getOrElse(c._1, emptySet)
       val nCi = transactions.size
       // co-occurrence transactions must be in same transaction and atomic change must come before prediction point
-      val cooccurTransactions = transactions.filter{ transKey => candChangeContextKeys.contains(transKey) }
+      val cooccurTransactions = transactions.intersect(candTransactions)
       val nCCi = cooccurTransactions.size
       val dCCi = i+1
       val term = (wScopeCi * wDepCi / dCCi) * Math.log((nCCi + 1) / (nCi + 1))
@@ -145,8 +145,7 @@ object BuildModel {
       val (wScopeTi, wDepTi) = (c._2, c._3)
       val transactions = codeContextIndex.getOrElse(c._1._2, candTransactions)
       val nTi = transactions.size
-      // co-occurrence transactions must be in same transaction and token must come before prediction point token
-      val cooccurTransactions = transactions.filter{ transKey => candCodeContextKeys.contains(transKey) }
+      val cooccurTransactions = transactions.intersect(candTransactions)
       val nCTi = cooccurTransactions.size
       val dCTi = i+1
       val term = (wScopeTi * wDepTi / dCTi) * Math.log((nCTi + 1) / (nTi + 1))
