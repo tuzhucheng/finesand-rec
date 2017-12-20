@@ -2,6 +2,9 @@
 
 Implementation and Experiments with API Code Recommendation using Statistical Learning from Fine-Grained Changes
 
+See technical notes on performance tuning to make BuildModel run faster [here](https://github.com/tuzhucheng/finesand-rec/wiki/BuildModel-Performance-Tuning).
+In progress: Reproduction of Large Corpus results..
+
 ## Downloading Data
 
 To see popular repositories on GitHub, you can run a query like the following.
@@ -14,24 +17,21 @@ curl -G https://api.github.com/search/repositories       \
     | jq '.items[] | select(.language == "JavaScript") | {name, description, language, stargazers_count, watchers_count, forks_count, html_url}'
 ```
 
-## Git Notes
+### Community Edition
 
-To view all commits in a repo, we use:
+Creating training set:
 
-```
-git rev-list --date-order master --reverse
-```
+Creating testing set (run inside finesand directory):
 
-where `master` can be replaced by the name of any branch. When `reverse` is set, the most recent commit is at the bottom of the list. Add `--max-count 5` or `-n 5` to limit the number of commits to 5 for example.
-
-To see all files that changed in a commit, we can do:
-
-```
-git diff-tree --no-commit-id -r 18f07f090e0d864d3c2c80efbb5ec6ee4019d5dd
+```./run-group-parallel.py 3 antlr4 itextpdf jgit log4j spring-framework --train-ratio 0.0 --dir ../data/community-corpus --cloud-dest /community-corpus-all-test-counts
 ```
 
-To see a particular version of a file, we can use the blob id returned from `git diff-tree`. For example:
+## Building Corpus
+
+TODO
+
+## Building Model
 
 ```
-git show d374225473f68ac3f30c8f44f8a6b1d8869ff071
+/usr/bin/time spark-submit --driver-memory 8G --executor-memory 4G --total-executor-cores 8 --class finesand.BuildModel target/scala-2.11/finesand-assembly-0.1.0-SNAPSHOT.jar --repo ../data/community-corpus/log4j
 ```
