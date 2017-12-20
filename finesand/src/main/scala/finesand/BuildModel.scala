@@ -65,7 +65,7 @@ object BuildModel {
 
     val transactions = changeContextRDD.map(t => t._2)
       .reduce((a,b) => a.union(b))
-      .take(1).toList
+      .toList
 
     val transactionsToId = transactions.zipWithIndex.map { case (t, i) => t -> i }.toMap
     val broadcast = spark.sparkContext.broadcast(transactionsToId)
@@ -111,7 +111,7 @@ object BuildModel {
 
     val transactions = codeContextRDD.map(t => t._2)
       .reduce((a, b) => a.union(b))
-      .take(1).toList
+      .toList
 
     val transactionsToId = transactions.zipWithIndex.map { case (t, i) => t -> i }.toMap
     val broadcast = spark.sparkContext.broadcast(transactionsToId)
