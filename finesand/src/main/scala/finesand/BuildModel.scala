@@ -23,11 +23,11 @@ object BuildModel {
 
   type PredictionPointKey = (String, Int)
   type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
-  type ChangeContextMap = collection.Map[(String, String, String),collection.mutable.Set[(String,Int)]]
-  type CodeContextMap = collection.Map[String,collection.mutable.Set[(String,Int)]]
+  type ChangeContextMap = collection.Map[(String, String, String),collection.mutable.Set[Int]]
+  type CodeContextMap = collection.Map[String,collection.mutable.Set[Int]]
   val Train = "train"
   val Test = "test"
-  val emptySet = collection.mutable.Set.empty[(String,Int)]
+  val emptySet = collection.mutable.Set.empty[Int]
 
   val schema = StructType(Array(
     StructField("change_type", DataTypes.StringType),
@@ -63,7 +63,19 @@ object BuildModel {
       ))
       .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s + e, (s1, s2) => s1.union(s2))
 
-    val changeContextIndex = changeContextRDD.collectAsMap
+    val transactions = changeContextRDD.mapValues(v => v)
+      .reduce(_ + _)
+      .collect
+      .toList
+
+    val transactionsToId = transactions.zipWithIndex.map { case (t, i) => t -> i }
+    val broadcast = sc.sparkContext.broadcast(transactionsToId)
+    val broadcastedMap = broadcast.get
+
+    val changeContextIndex = changeContextRDD.map { case (k, s) => {
+      val intIds = s.map(t => broadcastedMap.get(t))
+      (k, intIds)
+    }}.collectAsMap
 
     val vocabRDD = changeContextRawRDD.map(r => (
         r.getAs[String]("change_type"), r.getAs[String]("node_type"), r.getAs[String]("label"))
@@ -97,7 +109,20 @@ object BuildModel {
         (r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx"))
       ))
       .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s + e, (s1, s2) => s1.union(s2))
-    codeContextRDD.collectAsMap
+
+    val transactions = codeContextRDD.mapValues(v => v)
+      .reduce(_ + _)
+      .collect
+      .toList
+
+    val transactionsToId = transactions.zipWithIndex.map { case (t, i) => t -> i }
+    val broadcast = sc.sparkContext.broadcast(transactionsToId)
+    val broadcastedMap = broadcast.get
+
+    codeContextRDD.map { case (k, s) => {
+      val intIds = s.map(t => broadcastedMap.get(t))
+      (k, intIds)
+    }}.collectAsMap
   }
 
   def getPredictionPoints(repoCorpus: String, dataset: String, methodSpace: collection.mutable.Set[String] = collection.mutable.Set.empty[String]): PredictionPointMapType = {
