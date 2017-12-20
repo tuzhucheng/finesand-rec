@@ -32,7 +32,7 @@ sbt "runMain finesand.PrepareData --repo <path to repo> --branch <branch of repo
 sbt "runMain finesand.BuildCounts --repo <path to repo> --group 1000"
 ```
 
-You may need to increase Java heap size for some large repos. To do this, add `'-J-Xms256m' ::: '-J-Xmx8G'` after `sbt` and before `"runMain..."`.
+You may need to increase Java heap size for some large repos. To do this, add `-J-Xms256m -J-Xmx8G` after `sbt` and before `"runMain..."`.
 
 ## Building Model
 
