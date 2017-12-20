@@ -63,17 +63,16 @@ object BuildModel {
       ))
       .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s + e, (s1, s2) => s1.union(s2))
 
-    val transactions = changeContextRDD.mapValues(v => v)
-      .reduce(_ + _)
-      .collect
-      .toList
+    val transactions = changeContextRDD.map(t => t._2)
+      .reduce((a,b) => a.union(b))
+      .take(1).toList
 
-    val transactionsToId = transactions.zipWithIndex.map { case (t, i) => t -> i }
-    val broadcast = sc.sparkContext.broadcast(transactionsToId)
-    val broadcastedMap = broadcast.get
+    val transactionsToId = transactions.zipWithIndex.map { case (t, i) => t -> i }.toMap
+    val broadcast = spark.sparkContext.broadcast(transactionsToId)
+    val broadcastedMap = broadcast.value
 
     val changeContextIndex = changeContextRDD.map { case (k, s) => {
-      val intIds = s.map(t => broadcastedMap.get(t))
+      val intIds = s.map(t => broadcastedMap(t))
       (k, intIds)
     }}.collectAsMap
 
@@ -110,17 +109,16 @@ object BuildModel {
       ))
       .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s + e, (s1, s2) => s1.union(s2))
 
-    val transactions = codeContextRDD.mapValues(v => v)
-      .reduce(_ + _)
-      .collect
-      .toList
+    val transactions = codeContextRDD.map(t => t._2)
+      .reduce((a, b) => a.union(b))
+      .take(1).toList
 
-    val transactionsToId = transactions.zipWithIndex.map { case (t, i) => t -> i }
-    val broadcast = sc.sparkContext.broadcast(transactionsToId)
-    val broadcastedMap = broadcast.get
+    val transactionsToId = transactions.zipWithIndex.map { case (t, i) => t -> i }.toMap
+    val broadcast = spark.sparkContext.broadcast(transactionsToId)
+    val broadcastedMap = broadcast.value
 
     codeContextRDD.map { case (k, s) => {
-      val intIds = s.map(t => broadcastedMap.get(t))
+      val intIds = s.map(t => broadcastedMap(t))
       (k, intIds)
     }}.collectAsMap
   }
