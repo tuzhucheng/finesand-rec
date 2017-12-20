@@ -23,11 +23,11 @@ object BuildModel {
 
   type PredictionPointKey = (String, Int)
   type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
-  type IndexMutableMap = collection.mutable.Map[(String, Int), List[(Int, Int)]]
-  type ChangeContextMap = collection.Map[(String, String, String),IndexMutableMap]
-  type CodeContextMap = collection.Map[String,IndexMutableMap]
+  type ChangeContextMap = collection.Map[(String, String, String),collection.mutable.Set[Int]]
+  type CodeContextMap = collection.Map[String,collection.mutable.Set[Int]]
   val Train = "train"
   val Test = "test"
+  val emptySet = collection.mutable.Set.empty[Int]
 
   val schema = StructType(Array(
     StructField("change_type", DataTypes.StringType),
@@ -48,18 +48,6 @@ object BuildModel {
     StructField("parentMethodPos", DataTypes.IntegerType)
   ))
 
-  def plus(m1: IndexMutableMap, m2: IndexMutableMap) = {
-    m2 foreach {
-      case (k, v) =>
-        if (m1 contains k) {
-          m1(k) ++= v
-        } else {
-          m1 += (k -> v)
-        }
-    }
-    m1
-  }
-
   def getChangeContextIndexAndVocab(spark: SparkSession, corpusPath: String, dataset: String) = {
     val partFilePattern = if (dataset == Train) "change_context_part_*.txt" else "change_context_test_part_*.txt"
     val changeContextRawRDD = spark.read
@@ -69,12 +57,17 @@ object BuildModel {
       .csv(s"${corpusPath}/${partFilePattern}")
       .rdd
 
-    val changeContextRDD = changeContextRawRDD.map(r => ((r.getAs[String]("change_type"), r.getAs[String]("node_type"), r.getAs[String]("label")), collection.mutable.Map(((r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx")) -> List((r.getAs[Int]("position"), r.getAs[Int]("parentMethodPos")))))))
-      .reduceByKey((a, b) => plus(a, b))
+    val changeContextRDD = changeContextRawRDD.map(r => (
+        (r.getAs[String]("change_type"), r.getAs[String]("node_type"), r.getAs[String]("label")),
+        (r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx")
+      )
+      .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s.add(e), (s1, s2) => s1.union(s2))
 
     val changeContextIndex = changeContextRDD.collectAsMap
 
-    val vocabRDD = changeContextRawRDD.map(r => (r.getAs[String]("change_type"), r.getAs[String]("node_type"), r.getAs[String]("label")))
+    val vocabRDD = changeContextRawRDD.map(r => (
+        r.getAs[String]("change_type"), r.getAs[String]("node_type"), r.getAs[String]("label"))
+      )
       .filter(t => t._1 == "INS" && t._2 == "MethodInvocation")
       .map(t => t._3)
       .distinct
@@ -99,14 +92,11 @@ object BuildModel {
       .csv(s"${corpusPath}/${partFilePattern}")
       .rdd
 
-    val codeContextRDD = codeContextRawRDD.map(r => (r.getAs[String]("label"), collection.mutable.Map(((r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx")) -> List((r.getAs[Int]("position"), r.getAs[Int]("parentMethodPos")))))))
-      .reduceByKey((a, b) => plus(a, b))
-      .map{ case (k, m) => {
-        m foreach {
-          case (commit, list) => list.distinct.sorted
-        }
-        (k, m)
-      }}
+    val codeContextRDD = codeContextRawRDD.map(r => (
+        r.getAs[String]("label"),
+        (r.getAs[String]("commit_id"), r.getAs[Int]("transaction_idx"))
+      )
+      .aggregateByKey(collection.mutable.Set.empty[(String,Int)])((s, e) => s.add(e), (s1, s2) => s1.union(s2))
     codeContextRDD.collectAsMap
   }
 
@@ -133,14 +123,13 @@ object BuildModel {
 
   def getChangeContextScore(pp: PredictionPoint, candidate: String, changeContextIndex: ChangeContextMap, window: Int = 15) : Double = {
     val scoreComps: List[PredictionPoint#ChangeContextScoreComponent] = pp.changeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
-    val candChangeContext = changeContextIndex.getOrElse(("INS", "MethodInvocation", candidate), collection.mutable.Map[(String, Int), List[(Int, Int)]]())
-    val candChangeContextKeys = candChangeContext.keys.toSet
+    val candTransactions = changeContextIndex.getOrElse(("INS", "MethodInvocation", candidate), emptySet)
     val score = scoreComps.zipWithIndex.map { case(c, i) => {
       val (wScopeCi, wDepCi) = (c._2, c._3)
-      val transactions = changeContextIndex.getOrElse(c._1, Map())
+      val transactions = changeContextIndex.getOrElse(c._1, emptySet)
       val nCi = transactions.size
       // co-occurrence transactions must be in same transaction and atomic change must come before prediction point
-      val cooccurTransactions = transactions.filter{ case (transKey, locs) => candChangeContextKeys.contains(transKey) }
+      val cooccurTransactions = transactions.filter{ transKey => candChangeContextKeys.contains(transKey) }
       val nCCi = cooccurTransactions.size
       val dCCi = i+1
       val term = (wScopeCi * wDepCi / dCCi) * Math.log((nCCi + 1) / (nCi + 1))
@@ -151,14 +140,13 @@ object BuildModel {
 
   def getCodeContextScore(pp: PredictionPoint, candidate: String, codeContextIndex: CodeContextMap, window: Int = 15) : Double = {
     val scoreComps: List[PredictionPoint#CodeContextScoreComponent] = pp.codeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
-    val candCodeContext = codeContextIndex.getOrElse(candidate, collection.mutable.Map[(String, Int), List[(Int, Int)]]())
-    val candCodeContextKeys = candCodeContext.keys.toSet
+    val candTransactions = codeContextIndex.getOrElse(candidate, emptySet)
     val score = scoreComps.zipWithIndex.map { case(c, i) => {
       val (wScopeTi, wDepTi) = (c._2, c._3)
-      val transactions = codeContextIndex.getOrElse(c._1._2, collection.mutable.Map[(String, Int), List[(Int, Int)]]())
+      val transactions = codeContextIndex.getOrElse(c._1._2, candTransactions)
       val nTi = transactions.size
       // co-occurrence transactions must be in same transaction and token must come before prediction point token
-      val cooccurTransactions = transactions.filter{ case (transKey, locs) => candCodeContextKeys.contains(transKey) }
+      val cooccurTransactions = transactions.filter{ transKey => candCodeContextKeys.contains(transKey) }
       val nCTi = cooccurTransactions.size
       val dCTi = i+1
       val term = (wScopeTi * wDepTi / dCTi) * Math.log((nCTi + 1) / (nTi + 1))
@@ -214,7 +202,6 @@ object BuildModel {
     import spark.implicits._
 
     // Using println() instead of logging to distinguish from Spark logging
-    println("JDK filtering:", conf.jdk())
     println("Getting change context index and vocab...")
     var t0 = System.nanoTime
     val (trainChangeContextIndex, trainVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Train)
@@ -279,6 +266,7 @@ object BuildModel {
     val bestWcMsg = s"Best wc=$wcMax MAP=$maxMAP"
     println(bestWcMsg)
     writer.write(bestWcMsg + "\n")
+    // TODO Change to trainChangeContextIndex
     val testPredictions = getPredictionsAggregateScore(testPredictionPoints, trainVocab, testChangeContextIndex, testCodeContextIndex, wcMax)
     val testAccuracyMap = ModelUtils.getAccuracy(testPredictions, trainVocab)
     testAccuracyMap.foreach { case (k, m) => {
