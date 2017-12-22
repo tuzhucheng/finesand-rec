@@ -1,8 +1,6 @@
 package finesand
 
 import java.io.{BufferedWriter,File,FileInputStream,FileOutputStream,FileWriter,ObjectInputStream,ObjectOutputStream}
-import java.util.concurrent.ConcurrentHashMap
-import scala.collection.convert.decorateAsScala._
 import scala.io.Source
 
 import com.typesafe.scalalogging.Logger
@@ -22,18 +20,6 @@ object BuildModel {
     val aggregate = opt[Boolean](default = Some(false))
     verify()
   }
-
-  type PredictionPointKey = (String, Int)
-  type PredictionPointMapType = collection.mutable.Map[PredictionPointKey, PredictionPoint]
-  type ChangeContextMap = collection.Map[(String, String, String),collection.mutable.Set[Int]]
-  type CodeContextMap = collection.Map[String,collection.mutable.Set[Int]]
-  val Train = "train"
-  val Test = "test"
-  val emptySet = collection.mutable.Set.empty[Int]
-  val changeContextOccurCache = new ConcurrentHashMap[(String, String, String), Int]().asScala
-  val changeContextCooccurCache = new ConcurrentHashMap[((String, String, String),(String,String,String)), Int]().asScala
-  val codeContextOccurCache = new ConcurrentHashMap[String, Int]().asScala
-  val codeContextCooccurCache = new ConcurrentHashMap[(String, String), Int]().asScala
 
   val schema = StructType(Array(
     StructField("change_type", DataTypes.StringType),
@@ -55,7 +41,7 @@ object BuildModel {
   ))
 
   def getChangeContextIndexAndVocab(spark: SparkSession, corpusPath: String, dataset: String) = {
-    val partFilePattern = if (dataset == Train) "change_context_part_*.txt" else "change_context_test_part_*.txt"
+    val partFilePattern = if (dataset == Consts.Train) "change_context_part_*.txt" else "change_context_test_part_*.txt"
     val changeContextRawRDD = spark.read
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
@@ -101,7 +87,7 @@ object BuildModel {
   }
 
   def getCodeContextIndex(spark: SparkSession, corpusPath: String, dataset: String) = {
-    val partFilePattern = if (dataset == Train) "code_context_part_*.txt" else "code_context_test_part*.txt"
+    val partFilePattern = if (dataset == Consts.Train) "code_context_part_*.txt" else "code_context_test_part*.txt"
     val codeContextRawRDD = spark.read
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
@@ -129,99 +115,6 @@ object BuildModel {
     }}.collectAsMap
   }
 
-  def getPredictionPoints(repoCorpus: String, dataset: String, methodSpace: collection.mutable.Set[String] = collection.mutable.Set.empty[String]): PredictionPointMapType = {
-    val partFilePattern = if (dataset == Train) "predictionPointsPart" else "predictionPointsTestPart"
-    val serializedPredictionFiles = new File(repoCorpus).listFiles.filter(f => f.getName contains partFilePattern).map(f => f.getCanonicalPath)
-    var predictionPoints: PredictionPointMapType = collection.mutable.Map()
-    serializedPredictionFiles.foreach(f => {
-      val ois = new ObjectInputStream(new FileInputStream(f)) {
-        override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] = {
-          try { Class.forName(desc.getName, false, getClass.getClassLoader) }
-          catch { case ex: ClassNotFoundException => super.resolveClass(desc) }
-        }
-      }
-      var currentMap = ois.readObject.asInstanceOf[PredictionPointMapType]
-      if (!methodSpace.isEmpty) {
-        currentMap = currentMap.filter { case (trans, pp) => methodSpace.contains(pp.methodName) }
-      }
-      predictionPoints ++= currentMap
-      ois.close
-    })
-    predictionPoints
-  }
-
-  def getChangeContextScore(pp: PredictionPoint, candidate: String, changeContextIndex: ChangeContextMap, window: Int = 15) : Double = {
-    val scoreComps: List[PredictionPoint#ChangeContextScoreComponent] = pp.changeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
-    val candidateKey = ("INS", "MethodInvocation", candidate)
-    val candTransactions = changeContextIndex.getOrElse(candidateKey, emptySet)
-    val score = scoreComps.zipWithIndex.map { case (c, i) => {
-      val (wScopeCi, wDepCi) = (c._2, c._3)
-      val cooccurKey = if (candidateKey._1 < c._1._1) (candidateKey, c._1) else (c._1, candidateKey)
-      var nCi = changeContextOccurCache.getOrElse(c._1, -1)
-      var nCCi = changeContextCooccurCache.getOrElse(cooccurKey, -1)
-      if (nCi == -1 || nCCi == -1) {
-        val transactions = changeContextIndex.getOrElse(c._1, emptySet)
-        nCi = transactions.size
-        changeContextOccurCache.put(c._1, nCi)
-        val cooccurTransactions = transactions.intersect(candTransactions)
-        nCCi = cooccurTransactions.size
-        changeContextCooccurCache.put(cooccurKey, nCCi)
-      }
-      val dCCi = i+1
-      val term = (wScopeCi * wDepCi / dCCi) * Math.log((nCCi.toDouble + 1) / (nCi + 1))
-      Math.exp(term)
-    }}.sum
-    score
-  }
-
-  def getCodeContextScore(pp: PredictionPoint, candidate: String, codeContextIndex: CodeContextMap, window: Int = 15) : Double = {
-    val scoreComps: List[PredictionPoint#CodeContextScoreComponent] = pp.codeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
-    val candTransactions = codeContextIndex.getOrElse(candidate, emptySet)
-    val score = scoreComps.zipWithIndex.map { case (c, i) => {
-      val (wScopeTi, wDepTi) = (c._2, c._3)
-      val cooccurKey = if (candidate < c._1._2) (candidate, c._1._2) else (c._1._2, candidate)
-      var nTi = codeContextOccurCache.getOrElse(c._1._2, -1)
-      var nCTi = codeContextCooccurCache.getOrElse(cooccurKey, -1)
-      if (nTi == -1 || nCTi == -1) {
-        val transactions = codeContextIndex.getOrElse(c._1._2, candTransactions)
-        nTi = transactions.size
-        codeContextOccurCache.put(c._1._2, nTi)
-        val cooccurTransactions = transactions.intersect(candTransactions)
-        nCTi = cooccurTransactions.size
-        codeContextCooccurCache.put(cooccurKey, nCTi)
-      }
-      val dCTi = i+1
-      val term = (wScopeTi * wDepTi / dCTi) * Math.log((nCTi.toDouble + 1) / (nTi + 1))
-      Math.exp(term)
-    }}.sum
-    score
-  }
-
-  def getPredictionsAggregateScore(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, wc: Double, k: Int = 10) = {
-    val predictions = predictionPoints.toList.par.map { case (_, pp) => {
-      val changeContextScores = vocab.map(api => getChangeContextScore(pp, api, changeContextIndex))
-      val codeContextScores = vocab.map(api => getCodeContextScore(pp, api, codeContextIndex))
-      val scores = (changeContextScores zip codeContextScores).map { case (scoreC, scoreT) => wc*scoreC + (1-wc)*scoreT }
-      val topK = (vocab zip scores).sortWith(_._2 > _._2).take(k)
-      (pp.methodName, topK)
-    }}
-    predictions.seq
-  }
-
-  def getPredictionsSeparateScore(predictionPoints: PredictionPointMapType, vocab: Array[String], changeContextIndex: ChangeContextMap, codeContextIndex: CodeContextMap, k: Option[Int] = None) = {
-    val predictions = predictionPoints.toList.par.map { case (_, pp) => {
-      val changeContextScores = vocab.map(api => getChangeContextScore(pp, api, changeContextIndex))
-      val codeContextScores = vocab.map(api => getCodeContextScore(pp, api, codeContextIndex))
-      val scores = (changeContextScores zip codeContextScores)
-      val topK = k match {
-        case Some(limit) => (vocab zip scores).sortWith((a, b) => (a._2._1 + a._2._2) > (a._2._1 + a._2._2)).take(limit)
-        case None => (vocab zip scores)
-      }
-      (pp.methodName, topK)
-    }}
-    predictions.seq
-  }
-
   def main(args: Array[String]): Unit = {
     val logger = Logger("BuildModel")
     val conf = new Conf(args)
@@ -241,15 +134,15 @@ object BuildModel {
     // Using println() instead of logging to distinguish from Spark logging
     println("Getting change context index and vocab...")
     var t0 = System.nanoTime
-    val (trainChangeContextIndex, trainVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Train)
-    val (testChangeContextIndex, testVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Test)
+    val (trainChangeContextIndex, trainVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Consts.Train)
+    val (testChangeContextIndex, testVocab) = getChangeContextIndexAndVocab(spark, repoCorpus, Consts.Test)
     var t1 = System.nanoTime
     println(s"Finished getting change context index and vocab. Took ${(t1 - t0) / 1000000000} seconds.")
 
     println("Getting code context index and vocab...")
     t0 = System.nanoTime
-    val trainCodeContextIndex = getCodeContextIndex(spark, repoCorpus, Train)
-    val testCodeContextIndex = getCodeContextIndex(spark, repoCorpus, Test)
+    val trainCodeContextIndex = getCodeContextIndex(spark, repoCorpus, Consts.Train)
+    val testCodeContextIndex = getCodeContextIndex(spark, repoCorpus, Consts.Test)
     t1 = System.nanoTime
     println(s"Finished getting code context index and vocab. Took ${(t1 - t0) / 1000000000} seconds.")
 
@@ -260,8 +153,8 @@ object BuildModel {
       val methods = Source.fromFile("../jdk-method-miner/jdk8_methods_filtered.txt").getLines.toSet
       predictionMethodSpace = collection.mutable.Set[String](methods.toSeq: _*)
     }
-    val trainPredictionPoints = getPredictionPoints(repoCorpus, Train, predictionMethodSpace)
-    val testPredictionPoints = getPredictionPoints(repoCorpus, Test, predictionMethodSpace)
+    val trainPredictionPoints = ModelUtils.getPredictionPoints(repoCorpus, Consts.Train, predictionMethodSpace)
+    val testPredictionPoints = ModelUtils.getPredictionPoints(repoCorpus, Consts.Test, predictionMethodSpace)
     t1 = System.nanoTime
     println(s"Finished getting prediction points. Took ${(t1 - t0) / 1000000000} seconds.")
 
@@ -271,7 +164,7 @@ object BuildModel {
     val totalTrainMsg = s"Total train predictions: ${trainPredictionPoints.size}"
     println(totalTrainMsg)
     writer.write(totalTrainMsg + "\n")
-    val trainPredictions = getPredictionsSeparateScore(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex)
+    val trainPredictions = ModelUtils.getPredictionsSeparateScore(trainPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex)
     var maxMAP = 0.0
     var wcMax = 0.0
     for (i <- 0 to 100 by 10) {
@@ -304,7 +197,7 @@ object BuildModel {
     val bestWcMsg = s"Best wc=$wcMax MAP=$maxMAP"
     println(bestWcMsg)
     writer.write(bestWcMsg + "\n")
-    val testPredictions = getPredictionsAggregateScore(testPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, wcMax)
+    val testPredictions = ModelUtils.getPredictionsAggregateScore(testPredictionPoints, trainVocab, trainChangeContextIndex, trainCodeContextIndex, wcMax)
     val testAccuracyMap = ModelUtils.getAccuracy(testPredictions, trainVocab)
     testAccuracyMap.foreach { case (k, m) => {
       val accuracyLine = s"Test top-$k: oov ${m("oov")}, in ${m("in")}"
