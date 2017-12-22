@@ -1,6 +1,8 @@
 package finesand
 
 import java.io.{BufferedWriter,File,FileInputStream,FileOutputStream,FileWriter,ObjectInputStream,ObjectOutputStream}
+import java.util.concurrent.ConcurrentHashMap
+import scala.collection.convert.decorateAsScala._
 import scala.io.Source
 
 import com.typesafe.scalalogging.Logger
@@ -28,6 +30,10 @@ object BuildModel {
   val Train = "train"
   val Test = "test"
   val emptySet = collection.mutable.Set.empty[Int]
+  val changeContextOccurCache = new ConcurrentHashMap[(String, String, String), Int]().asScala
+  val changeContextCooccurCache = new ConcurrentHashMap[((String, String, String),(String,String,String)), Int]().asScala
+  val codeContextOccurCache = new ConcurrentHashMap[String, Int]().asScala
+  val codeContextCooccurCache = new ConcurrentHashMap[(String, String), Int]().asScala
 
   val schema = StructType(Array(
     StructField("change_type", DataTypes.StringType),
@@ -146,16 +152,23 @@ object BuildModel {
 
   def getChangeContextScore(pp: PredictionPoint, candidate: String, changeContextIndex: ChangeContextMap, window: Int = 15) : Double = {
     val scoreComps: List[PredictionPoint#ChangeContextScoreComponent] = pp.changeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
-    val candTransactions = changeContextIndex.getOrElse(("INS", "MethodInvocation", candidate), emptySet)
-    val score = scoreComps.zipWithIndex.map { case(c, i) => {
+    val candidateKey = ("INS", "MethodInvocation", candidate)
+    val candTransactions = changeContextIndex.getOrElse(candidateKey, emptySet)
+    val score = scoreComps.zipWithIndex.map { case (c, i) => {
       val (wScopeCi, wDepCi) = (c._2, c._3)
-      val transactions = changeContextIndex.getOrElse(c._1, emptySet)
-      val nCi = transactions.size
-      // co-occurrence transactions must be in same transaction and atomic change must come before prediction point
-      val cooccurTransactions = transactions.intersect(candTransactions)
-      val nCCi = cooccurTransactions.size
+      val cooccurKey = if (candidateKey._1 < c._1._1) (candidateKey, c._1) else (c._1, candidateKey)
+      var nCi = changeContextOccurCache.getOrElse(c._1, -1)
+      var nCCi = changeContextCooccurCache.getOrElse(cooccurKey, -1)
+      if (nCi == -1 || nCCi == -1) {
+        val transactions = changeContextIndex.getOrElse(c._1, emptySet)
+        nCi = transactions.size
+        changeContextOccurCache.put(c._1, nCi)
+        val cooccurTransactions = transactions.intersect(candTransactions)
+        nCCi = cooccurTransactions.size
+        changeContextCooccurCache.put(cooccurKey, nCCi)
+      }
       val dCCi = i+1
-      val term = (wScopeCi * wDepCi / dCCi) * Math.log((nCCi + 1) / (nCi + 1))
+      val term = (wScopeCi * wDepCi / dCCi) * Math.log((nCCi.toDouble + 1) / (nCi + 1))
       Math.exp(term)
     }}.sum
     score
@@ -164,14 +177,21 @@ object BuildModel {
   def getCodeContextScore(pp: PredictionPoint, candidate: String, codeContextIndex: CodeContextMap, window: Int = 15) : Double = {
     val scoreComps: List[PredictionPoint#CodeContextScoreComponent] = pp.codeContext.getOrElse(List()).sortWith(_._4 > _._4).take(window)
     val candTransactions = codeContextIndex.getOrElse(candidate, emptySet)
-    val score = scoreComps.zipWithIndex.map { case(c, i) => {
+    val score = scoreComps.zipWithIndex.map { case (c, i) => {
       val (wScopeTi, wDepTi) = (c._2, c._3)
-      val transactions = codeContextIndex.getOrElse(c._1._2, candTransactions)
-      val nTi = transactions.size
-      val cooccurTransactions = transactions.intersect(candTransactions)
-      val nCTi = cooccurTransactions.size
+      val cooccurKey = if (candidate < c._1._2) (candidate, c._1._2) else (c._1._2, candidate)
+      var nTi = codeContextOccurCache.getOrElse(c._1._2, -1)
+      var nCTi = codeContextCooccurCache.getOrElse(cooccurKey, -1)
+      if (nTi == -1 || nCTi == -1) {
+        val transactions = codeContextIndex.getOrElse(c._1._2, candTransactions)
+        nTi = transactions.size
+        codeContextOccurCache.put(c._1._2, nTi)
+        val cooccurTransactions = transactions.intersect(candTransactions)
+        nCTi = cooccurTransactions.size
+        codeContextCooccurCache.put(cooccurKey, nCTi)
+      }
       val dCTi = i+1
-      val term = (wScopeTi * wDepTi / dCTi) * Math.log((nCTi + 1) / (nTi + 1))
+      val term = (wScopeTi * wDepTi / dCTi) * Math.log((nCTi.toDouble + 1) / (nTi + 1))
       Math.exp(term)
     }}.sum
     score
@@ -200,11 +220,6 @@ object BuildModel {
       (pp.methodName, topK)
     }}
     predictions.seq
-  }
-
-  def findOptimalWc(trainPredictions: scala.collection.mutable.Map[String, Array[(String, (Double, Double))]]) = {
-    // TODO
-    0.5
   }
 
   def main(args: Array[String]): Unit = {
