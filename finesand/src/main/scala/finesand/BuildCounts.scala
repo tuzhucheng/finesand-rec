@@ -34,8 +34,6 @@ object BuildCounts {
   type ActionType = ((String, String, String), (String, Int, Int, Int))
   type TokenType = ((String, String), (String, Int, Int, Int))
   val disallowedTypes = List("CompilationUnit", "PackageDeclaration", "ImportDeclaration")
-  val Train = "train"
-  val Test = "test"
 
   def getCommits(corpusDir: String, dataset: String): Seq[Commit] = {
     val dir = new File(corpusDir)
@@ -141,7 +139,7 @@ object BuildCounts {
     })
 
     if (!partialChangeContextIndex.isEmpty) {
-      val testIndicator = if (dataset == Test) "test_" else ""
+      val testIndicator = if (dataset == Consts.Test) "test_" else ""
       val partialChangeContextFile = s"${repoCorpus}/change_context_${testIndicator}part_${group}.txt"
       val writer = new BufferedWriter(new FileWriter(partialChangeContextFile))
       partialChangeContextIndex.foreach(c => {
@@ -229,7 +227,7 @@ object BuildCounts {
     })
 
     if (!partialCodeContextIndex.isEmpty) {
-      val testIndicator = if (dataset == Test) "test_" else ""
+      val testIndicator = if (dataset == Consts.Test) "test_" else ""
       val partialCodeContextFile = s"${repoCorpus}/code_context_${testIndicator}part_${group}.txt"
       val writer = new BufferedWriter(new FileWriter(partialCodeContextFile))
       partialCodeContextIndex.foreach(c => {
@@ -246,7 +244,7 @@ object BuildCounts {
     val lang = conf.lang()
     val repoCorpus = s"${repo}-corpus"
 
-    Seq(Train, Test).foreach { s => {
+    Seq(Consts.Train, Consts.Test).foreach { s => {
       val commits = getCommits(repoCorpus, s)
 
       Run.initGenerators()
@@ -256,7 +254,7 @@ object BuildCounts {
         generateCodeContext(commitsGroup, repoCorpus, partNum, predictionPoints, lang, s)
 
         if (!predictionPoints.isEmpty) {
-          val testIndicator = if (s == Test) "Test" else ""
+          val testIndicator = if (s == Consts.Test) "Test" else ""
           val oos = new ObjectOutputStream(new FileOutputStream(s"$repoCorpus/predictionPoints${testIndicator}Part${partNum}"))
           oos.writeObject(predictionPoints)
           oos.close
