@@ -21,31 +21,12 @@ object BuildModel {
     verify()
   }
 
-  val schema = StructType(Array(
-    StructField("change_type", DataTypes.StringType),
-    StructField("node_type", DataTypes.StringType),
-    StructField("label", DataTypes.StringType),
-    StructField("commit_id", DataTypes.StringType),
-    StructField("transaction_idx", DataTypes.IntegerType),
-    StructField("position", DataTypes.IntegerType),
-    StructField("parentMethodPos", DataTypes.IntegerType)
-  ))
-
-  val schemaCodeContext = StructType(Array(
-    StructField("node_type", DataTypes.StringType),
-    StructField("label", DataTypes.StringType),
-    StructField("commit_id", DataTypes.StringType),
-    StructField("transaction_idx", DataTypes.IntegerType),
-    StructField("position", DataTypes.IntegerType),
-    StructField("parentMethodPos", DataTypes.IntegerType)
-  ))
-
   def getChangeContextIndexAndVocab(spark: SparkSession, corpusPath: String, dataset: String) = {
     val partFilePattern = if (dataset == Consts.Train) "change_context_part_*.txt" else "change_context_test_part_*.txt"
     val changeContextRawRDD = spark.read
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
-      .schema(schema)
+      .schema(Consts.schema)
       .csv(s"${corpusPath}/${partFilePattern}")
       .rdd
 
@@ -91,7 +72,7 @@ object BuildModel {
     val codeContextRawRDD = spark.read
       .option("header", "false")
       .option("timestampFormat", "yyyy/MM/dd HH:mm:ss ZZ")
-      .schema(schemaCodeContext)
+      .schema(Consts.schemaCodeContext)
       .csv(s"${corpusPath}/${partFilePattern}")
       .rdd
 
