@@ -18,8 +18,10 @@ object BuildModel {
     val community = opt[Boolean]()
     val project = opt[Boolean]()
     val repo = opt[String]() // "../data/community-corpus/log4j"
+    val test = opt[String]()
     val jdk = opt[Boolean](default = Some(false))
     requireOne(community, project)
+    dependsOnAny(community, List(test))
     verify()
   }
 
@@ -145,6 +147,11 @@ object BuildModel {
     t1 = System.nanoTime
     println(s"Finished getting code context index and vocab. Took ${(t1 - t0) / 1000000000} seconds.")
 
+    val writer = new BufferedWriter(new FileWriter(s"results/${repoName}.log"))
+    val contextCountMsg = s"Total # of change context items: ${trainChangeContextIndex.size}, total # of code context items: ${trainCodeContextIndex.size}"
+    println(contextCountMsg)
+    writer.write(contextCountMsg + "\n")
+
     println("Getting training prediction points...")
     t0 = System.nanoTime
     var predictionMethodSpace = collection.mutable.Set.empty[String]
@@ -167,7 +174,6 @@ object BuildModel {
 
     println("Getting training predictions...")
     val logFileName = if (conf.jdk()) s"${repoName}-jdk" else s"${repoName}"
-    val writer = new BufferedWriter(new FileWriter(s"results/${repoName}.log"))
     val totalTrainMsg = s"Total train predictions: ${trainPredictionPoints.size}"
     println(totalTrainMsg)
     writer.write(totalTrainMsg + "\n")
@@ -205,7 +211,12 @@ object BuildModel {
 
     val testPredictionPoints = conf.project.isSupplied match {
       case true => collection.mutable.Map(repoName -> ModelUtils.getPredictionPoints(predictionPointPaths, Consts.Test, predictionMethodSpace))
-      case false => ModelUtils.getPredictionPointsSeparately(predictionPointPaths, Consts.Test, predictionMethodSpace)
+      case false => {
+        val testRepo = conf.test().stripSuffix("/")
+        val subdirs = Utils.getListOfSubDirectories(testRepo)
+        val testPredictionPointPaths = subdirs.map(dirname => s"${testRepo}/${dirname}")
+        ModelUtils.getPredictionPointsSeparately(testPredictionPointPaths, Consts.Test, predictionMethodSpace)
+      }
     }
 
     testPredictionPoints.foreach { case (name, predictionPoints) => {
