@@ -16,25 +16,55 @@ object ModelUtils {
   val codeContextOccurCache = new ConcurrentHashMap[String, Int]().asScala
   val codeContextCooccurCache = new ConcurrentHashMap[(String, String), Int]().asScala
 
-  def getPredictionPoints(repoCorpus: String, dataset: String, methodSpace: collection.mutable.Set[String] = collection.mutable.Set.empty[String]): Consts.PredictionPointMapType = {
+  // Get prediction points for all repoPaths together
+  def getPredictionPoints(repoPaths: Seq[String], dataset: String, methodSpace: collection.mutable.Set[String] = collection.mutable.Set.empty[String]): Consts.PredictionPointMapType = {
     val partFilePattern = if (dataset == Consts.Train) "predictionPointsPart" else "predictionPointsTestPart"
-    val serializedPredictionFiles = new File(repoCorpus).listFiles.filter(f => f.getName contains partFilePattern).map(f => f.getCanonicalPath)
     var predictionPoints: Consts.PredictionPointMapType = collection.mutable.Map()
-    serializedPredictionFiles.foreach(f => {
-      val ois = new ObjectInputStream(new FileInputStream(f)) {
-        override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] = {
-          try { Class.forName(desc.getName, false, getClass.getClassLoader) }
-          catch { case ex: ClassNotFoundException => super.resolveClass(desc) }
+    repoPaths.foreach(repoPath => {
+      val serializedPredictionFiles = new File(repoPath).listFiles.filter(f => f.getName contains partFilePattern).map(f => f.getCanonicalPath)
+      serializedPredictionFiles.foreach(f => {
+        val ois = new ObjectInputStream(new FileInputStream(f)) {
+          override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] = {
+            try { Class.forName(desc.getName, false, getClass.getClassLoader) }
+            catch { case ex: ClassNotFoundException => super.resolveClass(desc) }
+          }
         }
-      }
-      var currentMap = ois.readObject.asInstanceOf[Consts.PredictionPointMapType]
-      if (!methodSpace.isEmpty) {
-        currentMap = currentMap.filter { case (trans, pp) => methodSpace.contains(pp.methodName) }
-      }
-      predictionPoints ++= currentMap
-      ois.close
+        var currentMap = ois.readObject.asInstanceOf[Consts.PredictionPointMapType]
+        if (!methodSpace.isEmpty) {
+          currentMap = currentMap.filter { case (trans, pp) => methodSpace.contains(pp.methodName) }
+        }
+        predictionPoints ++= currentMap
+        ois.close
+      })
     })
     predictionPoints
+  }
+
+  // Get prediction points separately for each repo
+  def getPredictionPointsSeparately(repoPaths: Seq[String], dataset: String, methodSpace: collection.mutable.Set[String] = collection.mutable.Set.empty[String]): collection.mutable.Map[String,Consts.PredictionPointMapType] = {
+    val partFilePattern = if (dataset == Consts.Train) "predictionPointsPart" else "predictionPointsTestPart"
+    var repoPredictionPoints = collection.mutable.Map.empty[String, Consts.PredictionPointMapType]
+    repoPaths.foreach(repoPath => {
+      var predictionPoints: Consts.PredictionPointMapType = collection.mutable.Map()
+      val serializedPredictionFiles = new File(repoPath).listFiles.filter(f => f.getName contains partFilePattern).map(f => f.getCanonicalPath)
+      serializedPredictionFiles.foreach(f => {
+        val ois = new ObjectInputStream(new FileInputStream(f)) {
+          override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] = {
+            try { Class.forName(desc.getName, false, getClass.getClassLoader) }
+            catch { case ex: ClassNotFoundException => super.resolveClass(desc) }
+          }
+        }
+        var currentMap = ois.readObject.asInstanceOf[Consts.PredictionPointMapType]
+        if (!methodSpace.isEmpty) {
+          currentMap = currentMap.filter { case (trans, pp) => methodSpace.contains(pp.methodName) }
+        }
+        predictionPoints ++= currentMap
+        ois.close
+      })
+      val repoName = repoPath.split("/").last
+      repoPredictionPoints(repoName) = predictionPoints
+    })
+    repoPredictionPoints
   }
 
   def getChangeContextScore(pp: PredictionPoint, candidate: String, changeContextIndex: Consts.ChangeContextMap, window: Int = 15) : Double = {

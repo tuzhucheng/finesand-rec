@@ -32,11 +32,11 @@ object PrepareData {
             Process(s"mkdir -p ${fileParentPath}", commitDir).!!
           val file = new File(s"${commitDir}/${transaction.path}")
 
-        val nameParts = transaction.path.split("/")
-        val oldFilePath = (nameParts.init :+ ("old_" + nameParts.last)).mkString("/")
-        val oldFile = new File(s"${commitDir}/${oldFilePath}")
-        (Process(s"git show ${transaction.newBlobId}", projectDir) #> file).!
-        (Process(s"git show ${transaction.oldBlobId}", projectDir) #> oldFile).!
+          val nameParts = transaction.path.split("/")
+          val oldFilePath = (nameParts.init :+ ("old_" + nameParts.last)).mkString("/")
+          val oldFile = new File(s"${commitDir}/${oldFilePath}")
+          (Process(s"git show ${transaction.newBlobId}", projectDir) #> file).!
+          (Process(s"git show ${transaction.oldBlobId}", projectDir) #> oldFile).!
         })
 
         val changeFile = new File(s"${commitDir}/finesand_transactions.txt")
